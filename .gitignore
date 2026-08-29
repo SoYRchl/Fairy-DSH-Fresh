@@ -1,0 +1,13 @@
+node_modules/
+.dsh-test-home/
+.env
+.env.*
+*.key
+*.pem
+logs/
+sessions/
+runtime/
+playwright-profile/
+world-core/
+browser-evidence/
+benchmarks/
