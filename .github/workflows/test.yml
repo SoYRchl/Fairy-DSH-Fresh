@@ -16,6 +16,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            profiles/web/pnpm-lock.yaml
+            fairy-visual/dsh-fairy-visual/pnpm-lock.yaml
+            fairy-voice/dsh-fairy-voice/pnpm-lock.yaml
+            fairy-startup/dsh-fairy-startup/pnpm-lock.yaml
+            browser-dock/dsh-browser-dock/pnpm-lock.yaml
+            balance-meter/dsh-balance-meter/pnpm-lock.yaml
       - name: Install and test visual
         working-directory: fairy-visual/dsh-fairy-visual
         run: pnpm install --frozen-lockfile --ignore-scripts && pnpm test
