@@ -4,13 +4,21 @@ title Fairy-DSH 安装 / 更新
 setlocal
 
 rem ---------------------------------------------------------------
-rem Fairy-DSH 安装 / 更新（单文件版）
+rem Fairy-DSH 安装 / 更新（单文件版，默认装 3 个安全插件）
 rem
 rem 双击即可。它同时是安装器、更新器和修复器：
 rem   没装过      -> 装上
 rem   已是最新    -> 提示，不重复下载
 rem   有新版      -> 更新到最新
 rem   装坏了      -> 修好（用的是永久地址，会重新拉取）
+rem
+rem 默认只装这 3 个：
+rem   dsh-fairy-visual  视觉浮层 / HDD 主题 / 设置面板
+rem   dsh-fairy-voice   朗读
+rem   dsh-balance-meter 侧栏余额
+rem
+rem 另外两个（dsh-fairy-startup / dsh-browser-dock）有已知风险，
+rem 想装请用 install_full.cmd，它会先把风险讲清楚再问你。
 rem
 rem ===============================================================
 rem 【改这个文件之前必读】编码约定：
@@ -33,6 +41,7 @@ echo   ============================================
 echo     Fairy-DSH 安装 / 更新
 echo   ============================================
 echo     装到 profile : %PROFILE%
+echo     装哪 3 个    : 视觉浮层 / 朗读 / 余额挂件
 echo     一共 4 步，需要联网，大约 1 到 3 分钟
 echo     中途请不要关闭这个窗口
 echo   ============================================
@@ -49,7 +58,7 @@ echo.
 
 rem ============ [2/4] 下载并安装插件 ============
 :step2
-echo   [2/4] 下载并安装 5 个插件...
+echo   [2/4] 下载并安装 3 个插件...
 echo.
 echo         下面会刷一大段 pnpm 的输出，不用看懂。
 echo         网络慢的时候会卡一会儿，这是正常的。
@@ -60,9 +69,7 @@ rem 后面的人设预设步骤就永远执行不到（实测踩过）。
 call dsh plugin --profile %PROFILE% add ^
   "%BASE%/dsh-fairy-visual.tgz" ^
   "%BASE%/dsh-fairy-voice.tgz" ^
-  "%BASE%/dsh-balance-meter.tgz" ^
-  "%BASE%/dsh-browser-dock.tgz" ^
-  "%BASE%/dsh-fairy-startup.tgz"
+  "%BASE%/dsh-balance-meter.tgz"
 if errorlevel 1 goto fail
 echo.
 echo         插件装好了。
@@ -105,6 +112,11 @@ echo       3) 设置里能看到 Fairy 这一栏，就说明装上了
 echo.
 echo     想用 Fairy 人设的话：
 echo       设置 - Fairy，把“Fairy 人设预设”开关打开
+echo.
+echo     还想要另外两个插件吗：
+echo       启动画面 / 截图 Dock 有已知风险，所以默认不装。
+echo       确实想要：下载并双击 install_full.cmd，
+echo       它会先把风险讲清楚，再问你要不要继续。
 echo.
 echo     如果重启后设置里找不到 Fairy：
 echo       把本窗口的内容拍下来发到群里，会有人帮你看
