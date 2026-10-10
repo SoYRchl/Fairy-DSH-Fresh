@@ -270,8 +270,19 @@ function verifyProfileContracts(profileRoot, packages, matrix) {
   const settings = resolvePackage(visual.sourceRoot, '@deepseek-ai/dsh-settings', 'visual settings package');
   assert(settings.manifest.version === VISUAL_SETTINGS_VERSION,
     `visual settings resolves to ${settings.manifest.version}; expected ${VISUAL_SETTINGS_VERSION}`);
-  assert(visualHost.includes("import { settingsNamespace } from '@deepseek-ai/dsh-settings'")
-    && visualHost.includes('settingsCtx.settings.register'), 'visual host settings registration contract is missing');
+  // [local patch 2026-10-10] 原断言要求宿主文件里存在
+  //   import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+  // —— 那正是 dsh 0.2.0-rc.2 上导致激活失败的写法：该具名导入在模块加载期就抛
+  // `SyntaxError: ... does not provide an export named 'settingsNamespace'`，
+  // 跑在下方 `settings.register` 守卫**之前**，于是整个插件 failed to import。
+  // 0.2.0-rc.2 已把设置注册换成 SettingsForms / Config schema 投影，故宿主改为
+  // 内联同名同语义的辅助函数，并保留 compat 的 register 守卫。
+  // 这里改判为「必须内联、且不得再从宿主包具名导入」——把契约从"固化该 bug"
+  // 翻转为"防止该 bug 回归"。
+  assert(visualHost.includes('function settingsNamespace(')
+    && visualHost.includes('settingsCtx.settings.register')
+    && !visualHost.includes("from '@deepseek-ai/dsh-settings'"),
+    'visual host settings contract broken: settingsNamespace must be inlined (0.2.0-rc.2 dropped the export), not imported from @deepseek-ai/dsh-settings');
   assert(!visual.client.includes('@deepseek-ai/dsh-settings') && visual.client.includes('ctx.settingsScope.bind'),
     'visual client crossed the server-only settings package boundary');
   for (const selector of ['[data-slot="sidebar"]', '[data-slot="conversation"]', '[data-composer-seat]', '[data-composer-card="true"]', '[data-conversation-scroll]', '[data-input-scroll]']) {

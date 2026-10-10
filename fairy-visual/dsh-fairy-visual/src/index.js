@@ -1,4 +1,3 @@
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import z from '@deepseek-ai/schemastery';
 import {
   FAIRY_IDENTITY_SETTINGS_NAMESPACE,
@@ -6,6 +5,18 @@ import {
   FAIRY_VISUAL_SETTINGS_VERSION,
 } from 'dsh-fairy-contracts';
 import { createFairyDiagnostics } from 'dsh-fairy-contracts/diagnostics';
+
+// [local patch 2026-10-10] dsh 0.2.0-rc.2 不再导出 `settingsNamespace`。
+// 旧内核里它只是"品牌化 + 格式校验"的辅助函数；而 settings.register 这条注册路径
+// 在 dsh 0.1.7+ 已被上游移除（见下方 apply() 的 skip 守卫），故内联一份语义完全
+// 相同的实现，使模块在 0.2.0-rc.2 上可正常导入，0.1.x 下行为不变。
+const NAMESPACE_PATTERN = /^[a-z][a-z0-9-]*$/;
+function settingsNamespace(value) {
+  if (!NAMESPACE_PATTERN.test(value)) {
+    throw new TypeError(`settings namespace "${value}" must match ${String(NAMESPACE_PATTERN)}`);
+  }
+  return value;
+}
 
 const settingsNamespaceName = FAIRY_VISUAL_SETTINGS_NAMESPACE;
 const FAIRY_VISUAL_SETTINGS = settingsNamespace(settingsNamespaceName);
