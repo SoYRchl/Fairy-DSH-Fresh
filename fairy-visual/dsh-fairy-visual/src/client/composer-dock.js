@@ -58,6 +58,41 @@ const MARKER_ATTRS = [
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+// The dock normally never exceeds HEIGHT_MAX. A composer takeover surface (an
+// approval prompt, a question composer, the read-only subagent composer) is
+// sized by the runtime instead of by this plugin, so it has to be allowed
+// beyond that bound; otherwise its action row is placed outside the viewport.
+const CONTENT_VISIBLE_MIN = 48;
+const RESIZER_CLASS = 'dsh-fairy-composer-resizer';
+
+// The runtime owns the seat's content and can replace the composer chain with a
+// taller surface while a request is pending. The dock owns the seat's height, so
+// hard-setting that height pushes the takeover surface's action row past the
+// viewport edge, where it can no longer be clicked and the session waits
+// forever. Measure the in-flow boxes the runtime placed in the seat so they can
+// raise the dock. Fairy's own nodes are out of flow (the resize handle and the
+// material layer are absolutely positioned) and hidden chain riders contribute
+// nothing, so both are excluded by the checks below.
+function collectSeatContentBoxes(node, boxes) {
+  if (!node) return boxes;
+  const children = node.children || [];
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    if (child.classList?.contains?.(RESIZER_CLASS)) continue;
+    const style = getComputedStyle(child);
+    if (style.display === 'none') continue;
+    // The composer chain hoists its entries through `display: contents`
+    // wrappers, so descend instead of stopping at the first level.
+    if (style.display === 'contents') {
+      collectSeatContentBoxes(child, boxes);
+      continue;
+    }
+    if (style.position === 'absolute' || style.position === 'fixed') continue;
+    boxes.push(child);
+  }
+  return boxes;
+}
+
 function clearMarker(node, name) {
   if (node?.isConnected) node.removeAttribute(name);
 }
@@ -106,11 +141,66 @@ function mountComposerDock(controller) {
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
     return Math.max(HEIGHT_MIN, Math.min(HEIGHT_MAX, viewportHeight - CONTENT_MIN));
   };
-  const renderedHeight = () => attachmentDockHeight(
-    height,
-    attachmentRailHeight(attachmentSlot(card)),
+  // Content-driven growth answers to the viewport, not to the drag bound: the
+  // takeover surface is not user-resizable, and every one of its controls has to
+  // stay reachable, so it may claim the viewport down to a small chat sliver.
+  const maximumContentHeight = () => {
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    return Math.max(maximumDockHeight(), Math.max(HEIGHT_MIN, viewportHeight - CONTENT_VISIBLE_MIN));
+  };
+  // Measured once per layout frame, before this frame writes any geometry, so
+  // the reads cannot land on a half-written seat.
+  let contentBottom = 0;
+  // The dock is deliberately transparent to pointer events and every Fairy
+  // control inside it re-enables them for itself. A runtime takeover surface
+  // cannot do that: it inherits `none` from the dock, so its controls stay inert
+  // even once they are on screen. Re-enable interaction on the surfaces that
+  // replaced the official composer card and hand the inline value back when the
+  // runtime drops them.
+  const contentInteractivity = new Map();
+  const releaseContentInteractivity = (boxes) => {
+    const active = new Set(boxes);
+    contentInteractivity.forEach((previous, node) => {
+      if (active.has(node)) return;
+      contentInteractivity.delete(node);
+      if (!node.isConnected) return;
+      if (previous.value) node.style.setProperty('pointer-events', previous.value, previous.priority);
+      else node.style.removeProperty('pointer-events');
+    });
+  };
+  const claimContentInteractivity = (boxes) => {
+    boxes.forEach((node) => {
+      // Defensive: the official composer card owns its interaction through
+      // Fairy CSS, so it never receives an inline value.
+      if (card && (node === card || node.contains(card))) return;
+      if (contentInteractivity.has(node)) return;
+      if (getComputedStyle(node).pointerEvents !== 'none') return;
+      contentInteractivity.set(node, {
+        value: node.style.getPropertyValue('pointer-events'),
+        priority: node.style.getPropertyPriority('pointer-events'),
+      });
+      node.style.setProperty('pointer-events', 'auto');
+    });
+  };
+  const measureContent = () => {
+    // The official composer card is sized by the dock itself, so it must not
+    // feed the measurement back: including it would latch the dock open and
+    // block every later resize. Only a surface that replaced that card can
+    // state a height of its own, and the surface is exactly the box that does
+    // not contain it.
+    const boxes = collectSeatContentBoxes(seat, [])
+      .filter((box) => !card || (box !== card && !box.contains(card)));
+    contentBottom = boxes.reduce((bottom, box) => Math.max(bottom, box.offsetTop + box.offsetHeight), 0);
+    releaseContentInteractivity(boxes);
+    claimContentInteractivity(boxes);
+  };
+  const renderedHeight = () => clamp(
+    Math.max(
+      attachmentDockHeight(height, attachmentRailHeight(attachmentSlot(card)), HEIGHT_MIN, maximumDockHeight()),
+      contentBottom,
+    ),
     HEIGHT_MIN,
-    maximumDockHeight(),
+    maximumContentHeight(),
   );
 
   const schedule = () => {
@@ -215,6 +305,8 @@ function mountComposerDock(controller) {
     }
     previousSeatStyle = null;
     removeHandle();
+    releaseContentInteractivity([]);
+    contentBottom = 0;
     seat = null;
     card = null;
   };
@@ -379,6 +471,7 @@ function mountComposerDock(controller) {
         resizeObserver.observe(surface);
       }
     }
+    measureContent();
     const rect = surface?.getBoundingClientRect();
     if (!rect || rect.width < 1 || rect.height < 1) return;
     // The resize controller owns the live drag state. The persisted setting is

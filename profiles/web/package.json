@@ -4,6 +4,7 @@
   "dependencies": {
     "@playwright/mcp": "0.0.79",
     "@upstash/context7-mcp": "4.0.2",
+    "@xmanrui/dsh-im": "4.9.1",
     "dsh-browser-dock": "link:../../browser-dock/dsh-browser-dock",
     "dsh-balance-meter": "link:../../balance-meter/dsh-balance-meter",
     "dsh-fairy-startup": "link:../../fairy-startup/dsh-fairy-startup",
@@ -19,7 +20,8 @@
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
         "dsh-message-edit",
-        "dsh-reasoning-effort"
+        "dsh-reasoning-effort",
+        "@xmanrui/dsh-im"
       ]
     }
   }

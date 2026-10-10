@@ -20,7 +20,8 @@ const legacyFrameFile = path.join(runtimeDir, 'frame.jpg');
 const commandFile = path.join(runtimeDir, 'command.json');
 const commandFileName = path.basename(commandFile);
 const commandRescanMs = 5_000;
-const playwrightCommand = path.join(dshHome, 'profiles', 'web', 'node_modules', '.bin', 'playwright-mcp');
+const isWindows = process.platform === 'win32';
+const playwrightCommand = path.join(dshHome, 'profiles', 'web', 'node_modules', '.bin', isWindows ? 'playwright-mcp.cmd' : 'playwright-mcp');
 const profileFlagIndex = process.argv.indexOf('--user-data-dir');
 const userDataDir = profileFlagIndex >= 0 ? process.argv[profileFlagIndex + 1] : path.join(dshHome, 'playwright-profile');
 const captureActions = new Set([
@@ -306,7 +307,7 @@ function pollCommands() {
 removeRuntimeFiles();
 publish(inactiveState());
 
-const child = spawn(playwrightCommand, process.argv.slice(2), { stdio: ['pipe', 'pipe', 'pipe'] });
+const child = spawn(playwrightCommand, process.argv.slice(2), { stdio: ['pipe', 'pipe', 'pipe'], shell: isWindows });
 child.stderr.pipe(process.stderr);
 
 const clientInput = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });

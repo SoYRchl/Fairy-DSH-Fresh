@@ -3178,6 +3178,25 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 			"data-dsh-fairy-model-menu-open"
 		];
 		const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+		const CONTENT_VISIBLE_MIN = 48;
+		const RESIZER_CLASS = "dsh-fairy-composer-resizer";
+		function collectSeatContentBoxes(node, boxes) {
+			if (!node) return boxes;
+			const children = node.children || [];
+			for (let index = 0; index < children.length; index += 1) {
+				const child = children[index];
+				if (child.classList?.contains?.(RESIZER_CLASS)) continue;
+				const style = getComputedStyle(child);
+				if (style.display === "none") continue;
+				if (style.display === "contents") {
+					collectSeatContentBoxes(child, boxes);
+					continue;
+				}
+				if (style.position === "absolute" || style.position === "fixed") continue;
+				boxes.push(child);
+			}
+			return boxes;
+		}
 		function clearMarker(node, name) {
 			if (node?.isConnected) node.removeAttribute(name);
 		}
@@ -3219,7 +3238,41 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 				const viewportHeight = window.visualViewport?.height || window.innerHeight;
 				return Math.max(HEIGHT_MIN, Math.min(HEIGHT_MAX, viewportHeight - CONTENT_MIN));
 			};
-			const renderedHeight = () => attachmentDockHeight(height, attachmentRailHeight(attachmentSlot(card)), HEIGHT_MIN, maximumDockHeight());
+			const maximumContentHeight = () => {
+				const viewportHeight = window.visualViewport?.height || window.innerHeight;
+				return Math.max(maximumDockHeight(), Math.max(HEIGHT_MIN, viewportHeight - CONTENT_VISIBLE_MIN));
+			};
+			let contentBottom = 0;
+			const contentInteractivity = /* @__PURE__ */ new Map();
+			const releaseContentInteractivity = (boxes) => {
+				const active = new Set(boxes);
+				contentInteractivity.forEach((previous, node) => {
+					if (active.has(node)) return;
+					contentInteractivity.delete(node);
+					if (!node.isConnected) return;
+					if (previous.value) node.style.setProperty("pointer-events", previous.value, previous.priority);
+					else node.style.removeProperty("pointer-events");
+				});
+			};
+			const claimContentInteractivity = (boxes) => {
+				boxes.forEach((node) => {
+					if (card && (node === card || node.contains(card))) return;
+					if (contentInteractivity.has(node)) return;
+					if (getComputedStyle(node).pointerEvents !== "none") return;
+					contentInteractivity.set(node, {
+						value: node.style.getPropertyValue("pointer-events"),
+						priority: node.style.getPropertyPriority("pointer-events")
+					});
+					node.style.setProperty("pointer-events", "auto");
+				});
+			};
+			const measureContent = () => {
+				const boxes = collectSeatContentBoxes(seat, []).filter((box) => !card || box !== card && !box.contains(card));
+				contentBottom = boxes.reduce((bottom, box) => Math.max(bottom, box.offsetTop + box.offsetHeight), 0);
+				releaseContentInteractivity(boxes);
+				claimContentInteractivity(boxes);
+			};
+			const renderedHeight = () => clamp(Math.max(attachmentDockHeight(height, attachmentRailHeight(attachmentSlot(card)), HEIGHT_MIN, maximumDockHeight()), contentBottom), HEIGHT_MIN, maximumContentHeight());
 			const schedule = () => {
 				if (!frame && !disposed) frame = domObserverManager.scheduleFrame(layoutFrameKey, sync);
 			};
@@ -3311,6 +3364,8 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 				].forEach((name) => seat.style.removeProperty(name));
 				previousSeatStyle = null;
 				removeHandle();
+				releaseContentInteractivity([]);
+				contentBottom = 0;
 				seat = null;
 				card = null;
 			};
@@ -3467,6 +3522,7 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 						resizeObserver.observe(surface);
 					}
 				}
+				measureContent();
 				const rect = surface?.getBoundingClientRect();
 				if (!rect || rect.width < 1 || rect.height < 1) return;
 				if (!resizeController.dragging) height = readHeight();
