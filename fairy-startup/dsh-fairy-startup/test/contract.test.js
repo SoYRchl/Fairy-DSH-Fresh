@@ -31,25 +31,29 @@ test('embeds the canonical client diagnostics byte for byte', () => {
   assert.equal(embeddedClientDiagnostics(source), canonicalClientDiagnostics);
 });
 
-test('owns only the official fresh-session startup flow', () => {
-  assert.match(source, /sessions\.clear\(\)/);
-  assert.match(source, /workspaces\.startSession\(\)/);
-  assert.match(source, /baselinesReady/);
+test('owns only the official fresh-session startup flow (rc.2 services)', () => {
+  // rc.2: the startup selection lives on the official `uiWorkspace` service.
+  assert.match(source, /ctx\.uiWorkspace\.clearMain\(\)/);
+  assert.match(source, /uiWorkspace\.startSession\(\)/);
+  // rc.2: `baselinesReady` was retired in favour of the `phase === 'ready'` gate.
+  assert.match(source, /\.phase === 'ready'/);
   assert.match(source, /workspaces\.list\.subscribe\(startWhenReady\)/);
-  assert.match(source, /function createWorkspaceStarter\(workspaces\)/);
+  assert.match(source, /function createWorkspaceStarter\(uiWorkspace, workspaces, sessions\)/);
   assert.match(source, /starter\.startOrSubscribe\(\)/);
   assert.match(source, /return \(\) => starter\.dispose\(\)/);
+  assert.match(source, /inject: \['uiWorkspace', 'workspaces', 'sessions'\]/);
   assert.doesNotMatch(source, /fairy-visual|fairy-voice|localStorage|sessionStorage|querySelector/);
+  assert.doesNotMatch(source, /sessions\.clear\(\)|baselinesReady|recentWorkspaceId/);
   assert.match(source, /STARTUP_RESET_ATTR/);
   assert.match(source, /root\.hasAttribute\(STARTUP_RESET_ATTR\)/);
   assert.match(source, /root\.setAttribute\(STARTUP_RESET_ATTR, 'true'\)/);
   assert.match(source, /root\.removeAttribute\(STARTUP_RESET_ATTR\)/);
   assert.match(source, /DSH_FAIRY_LOG/);
-  assert.match(source, /session\.clear-restored/);
+  assert.match(source, /selection\.clear-restored/);
   assert.match(source, /session\.start-fresh/);
   assert.match(source, /started = true;\s*unsubscribe\?\.\(\)/s);
-  assert.equal((source.match(/sessions\.clear\(\)/g) || []).length, 1);
-  assert.equal((source.match(/workspaces\.startSession\(\)/g) || []).length, 1);
+  assert.equal((source.match(/ctx\.uiWorkspace\.clearMain\(\)/g) || []).length, 1);
+  assert.equal((source.match(/uiWorkspace\.startSession\(\)/g) || []).length, 1);
 });
 
 test('duplicate startup module application keeps one reset and one baseline subscription', () => {
@@ -66,22 +70,27 @@ test('duplicate startup module application keeps one reset and one baseline subs
   let starts = 0;
   let subscribed = 0;
   let unsubscribed = 0;
-  let snapshot = { baselinesReady: false, recentWorkspaceId: 'workspace-1' };
+  const workspacesSnapshot = { phase: 'pending', items: [] };
+  const sessionsSnapshot = { phase: 'ready', ids: [], byId: {} };
   let notify;
   const cleanups = [];
   const ctx = {
-    sessions: { clear() { clears += 1; } },
+    uiWorkspace: {
+      clearMain() { clears += 1; },
+      startSession() { starts += 1; },
+    },
     workspaces: { list: {
-      getSnapshot: () => snapshot,
+      getSnapshot: () => workspacesSnapshot,
       subscribe(listener) { subscribed += 1; notify = listener; return () => { unsubscribed += 1; }; },
-    }, startSession() { starts += 1; } },
+    } },
+    sessions: { list: { getSnapshot: () => sessionsSnapshot } },
     effect(factory) { cleanups.push(factory()); },
   };
   plugin.apply(ctx);
   plugin.apply(ctx);
   assert.equal(clears, 1);
   assert.equal(subscribed, 1);
-  snapshot = { ...snapshot, baselinesReady: true };
+  workspacesSnapshot.phase = 'ready';
   notify();
   assert.equal(starts, 1);
   assert.equal(unsubscribed, 1);

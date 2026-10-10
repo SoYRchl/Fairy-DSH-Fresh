@@ -60,22 +60,23 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
     })();
     const diagnostics = createFairyDiagnostics('dsh-fairy-startup');
 
-    function createWorkspaceStarter(workspaces) {
+    function createWorkspaceStarter(uiWorkspace, workspaces, sessions) {
       let unsubscribe = null;
       let started = false;
+      // rc.2: workspace/session lists expose a `phase` field; "ready" replaces
+      // the retired baseline-ready flag.
+      const isReady = () =>
+        workspaces.list.getSnapshot().phase === 'ready' &&
+        sessions.list.getSnapshot().phase === 'ready';
       const startWhenReady = () => {
-        const snapshot = workspaces.list.getSnapshot();
-        if (started || !snapshot.baselinesReady) return false;
-        // rc.2+ keeps an empty workspace selection as a valid state. Calling
-        // startSession() without a target re-enters the official session
-        // projection synchronously, so leave the native new-session view alone.
-        if (snapshot.recentWorkspaceId !== undefined) {
-          try {
-            workspaces.startSession();
-          } catch (error) {
-            diagnostics.error('session.start-fresh', error, {});
-            return false;
-          }
+        if (started || !isReady()) return false;
+        // rc.2: the fresh-session entry point moved onto the official
+        // `uiWorkspace` service (the pure WorkspaceController no longer owns it).
+        try {
+          uiWorkspace.startSession();
+        } catch (error) {
+          diagnostics.error('session.start-fresh', error, {});
+          return false;
         }
         started = true;
         unsubscribe?.();
@@ -92,32 +93,35 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       };
     }
 
-    function resetStartupSelection(sessions, workspaces) {
+    function resetStartupSelection(ctx) {
       const root = document.documentElement;
       if (root.hasAttribute(STARTUP_RESET_ATTR)) return null;
       root.setAttribute(STARTUP_RESET_ATTR, 'true');
 
-      // Clear restored selection synchronously so a previous conversation never
-      // flashes, then use the official workspace API once its baselines exist.
+      // rc.2: the startup selection moved out of the retired session-clear call
+      // into the official `uiWorkspace` service, whose `clearMain()` empties the
+      // persisted selection store (`dsh.sessions.current`). A previous
+      // conversation never flashes, then the official restore flow opens a fresh
+      // blank session once the workspace/session baselines are ready.
       try {
-        sessions.clear();
+        ctx.uiWorkspace.clearMain();
       } catch (error) {
         root.removeAttribute(STARTUP_RESET_ATTR);
-        diagnostics.error('session.clear-restored', error, {});
+        diagnostics.error('selection.clear-restored', error, {});
         throw error;
       }
-      const starter = createWorkspaceStarter(workspaces);
+      const starter = createWorkspaceStarter(ctx.uiWorkspace, ctx.workspaces, ctx.sessions);
       starter.startOrSubscribe();
       return () => starter.dispose();
     }
 
     function apply(ctx) {
       return diagnostics.guard('apply', () => {
-        const disposeReset = resetStartupSelection(ctx.sessions, ctx.workspaces);
+        const disposeReset = resetStartupSelection(ctx);
         if (disposeReset) ctx.effect(() => disposeReset, 'dsh-fairy-startup reset selection');
       }, { surface: 'client' });
     }
 
-    return { apply, inject: ['sessions', 'workspaces'], name: 'dsh-fairy-startup' };
+    return { apply, inject: ['uiWorkspace', 'workspaces', 'sessions'], name: 'dsh-fairy-startup' };
   },
 });
