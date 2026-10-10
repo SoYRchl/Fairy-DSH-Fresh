@@ -1,6 +1,6 @@
 {
   "name": "dsh-fairy-visual",
-  "version": "0.1.0",
+  "version": "0.1.8",
   "private": true,
   "type": "module",
   "main": "./lib/index.js",
@@ -10,6 +10,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
@@ -25,8 +28,15 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-settings": "0.1.1-rc.2",
-    "@deepseek-ai/schemastery": "3.18.1",
-    "dsh-fairy-contracts": "link:../../fairy-contracts"
+    "@deepseek-ai/schemastery": "3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.7 || ^0.1.1-rc.2 || ^0.1.2-alpha.2 || ^0.2.0-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-settings": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "tsdown": "^0.22.14"

@@ -3,30 +3,27 @@ import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { chmod, mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, open, readFile, rename, unlink, writeFile, appendFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { createLocalTtsTransport, createPcmStreamHandler } from './server/local-tts-proxy.js';
+import { createPcmStreamHandler } from './server/local-tts-proxy.js';
+import {
+  applyConfigOverrides,
+  buildTtsTransport,
+  ensureFairyDirectories,
+  readRuntimeConfig,
+  readReferencePrompt,
+  runVoiceSelfCheck,
+  saveRuntimeConfig,
+} from './server/voice-selfcheck.js';
 import { createVoiceBriefFallback, createVoiceBrainServerBoundary } from './server/voice-brief-fallback.js';
-import { createFairyDiagnostics } from 'dsh-fairy-contracts/diagnostics';
+import { createFairyDiagnostics } from '../vendor/diagnostics.js';
 
-const LOCAL_TTS_URL = 'http://127.0.0.1:9880/tts';
-const LOCAL_DOCS_URL = 'http://127.0.0.1:9880/docs';
-const REFERENCE_AUDIO_PATH = join(homedir(), '.dsh', 'fairy-voice', 'runtime', 'reference', 'fairy_ref.wav');
-const REFERENCE_PROMPT_PATH = join(homedir(), '.dsh', 'fairy-voice', 'runtime', 'reference', 'fairy_ref.txt');
-const REFERENCE_PROMPT_FALLBACK = '根据用户协议，我无权回复该问题。主人将在合适的时间与合适的场合获知答案。';
+// [local patch 0.2.3] SoVITS 地址、参考音频路径不再是写死的常量：
+// 默认值在 voice-selfcheck.js 里，用户可在设置栏改，改完即时生效。
 const diagnostics = createFairyDiagnostics('dsh-fairy-voice');
 
-function readReferencePrompt() {
-  try {
-    return readFileSync(REFERENCE_PROMPT_PATH, 'utf8').trim();
-  } catch (error) {
-    diagnostics.warn('reference.prompt.load', { file: 'fairy_ref.txt', fallback: true }, error);
-    return REFERENCE_PROMPT_FALLBACK;
-  }
-}
-
-const REFERENCE_PROMPT = readReferencePrompt();
 const MAX_TTS_TEXT_LENGTH = 500;
 const MAX_SENTENCE_LENGTH = 40;
 const TTS_TIMEOUT_MS = 180_000;
@@ -37,6 +34,18 @@ const MAX_VOICE_BRIEF_OUTPUT_LENGTH = 260;
 const DEEPSEEK_V4_FLASH_MODEL = 'deepseek-v4-flash';
 const DEEPSEEK_CHAT_COMPLETIONS_URL = 'https://api.deepseek.com/chat/completions';
 const VOICE_BRAIN_CONFIG_PATH = join(homedir(), '.dsh', 'fairy-voice', 'voice-brain.json');
+/* [local patch 0.3.5] 检查更新：宿主启动后延迟查一次「最新 Release」，结果落盘给设置面板读。
+ * 规则：3 秒超时、延迟 5 秒、全程静默 —— 查不到就当没这回事，
+ * 绝不能让它在启动时刷错误日志，更不能拖慢启动（v0.3.2 的教训：宿主侧的错会整个插件起不来）。 */
+const UPDATE_CHECK_PATH = join(homedir(), '.dsh', 'fairy-voice', 'update-check.json');
+const UPDATE_CHECK_TTL_MS = 3 * 60 * 60 * 1000;
+const UPDATE_CHECK_TIMEOUT_MS = 3000;
+const UPDATE_CHECK_DELAY_MS = 5000;
+/* [local patch compat] 更新检查必须查**本仓库**的 Releases。
+ * 指向上游孤舟版会拉到错误的版本号：本仓库的版本序列是 v0.3.8-compat.N，
+ * 与孤舟版的 v0.3.x 不是同一套 —— 用它比较会得出错误的「有新版本」结论，
+ * 更糟的是会把用户引导去装**不含跨内核兼容**的版本。同类修正见 lib/settings-merge.ps1。 */
+const UPDATE_RELEASES_API = 'https://api.github.com/repos/SoYRchl/Fairy-DSH-Fresh/releases/latest';
 function safeText(value) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
@@ -457,15 +466,49 @@ const createVoiceBrief = createVoiceBriefFallback({
   endpoint: DEEPSEEK_CHAT_COMPLETIONS_URL,
 });
 
+/** 读更新检查缓存。不存在、读不动、格式不对，一律返回 null（绝不抛）。 */
+async function readUpdateCheckCache() {
+  try {
+    const value = JSON.parse(await readFile(UPDATE_CHECK_PATH, 'utf8'));
+    const tag = typeof value?.tag === 'string' ? value.tag : '';
+    const checkedAt = Number(value?.checkedAt);
+    if (!tag || !Number.isFinite(checkedAt)) return null;
+    return { tag, checkedAt };
+  } catch (error) {
+    return null;
+  }
+}
+
+/** 问一次 GitHub 的 releases/latest 并落盘。失败一律返回 null —— 调用方不需要区分原因。 */
+async function checkLatestRelease(fetchImpl = fetch, now = Date.now()) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort('timeout'), UPDATE_CHECK_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(UPDATE_RELEASES_API, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const tag = typeof payload?.tag_name === 'string' ? payload.tag_name.trim() : '';
+    if (!tag) return null;
+    const cache = { tag, checkedAt: now };
+    await writePrivateJson(UPDATE_CHECK_PATH, cache);
+    return cache;
+  } catch (error) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readVoiceBrainConfig, writeConfig = writeVoiceBrainConfig, clearConfig = clearVoiceBrainConfig } = {}) {
   const sentencePreparation = createSentencePreparation();
   const pcmStreamHandler = createPcmStreamHandler();
-  const localTtsTransport = createLocalTtsTransport({
+  // [local patch 0.2.3] 传输层按当前运行时配置构造，改设置后立刻生效（无需重启 DSH）。
+  const localTtsTransport = () => buildTtsTransport(readRuntimeConfig(), {
     fetchImpl,
-    ttsUrl: LOCAL_TTS_URL,
-    docsUrl: LOCAL_DOCS_URL,
-    referenceAudioPath: REFERENCE_AUDIO_PATH,
-    referencePrompt: REFERENCE_PROMPT,
     ttsTimeoutMs: TTS_TIMEOUT_MS,
     statusTimeoutMs: STATUS_TIMEOUT_MS,
   });
@@ -489,10 +532,34 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
       activeControllers.clear();
       activeTtsController = null;
     },
+    /* [local patch 0.3.5] 检查更新：面板读缓存 / 面板把自己查到的结果写回。
+     * 写回是往磁盘写文件，所以入参必须严校验 —— 不能让它变成「任意内容写任意文件」的通道。 */
+    updateStatus: async (_req, res) => {
+      try {
+        sendJson(res, 200, await readUpdateCheckCache());
+      } catch (error) {
+        sendJson(res, 200, null);
+      }
+    },
+    updateCache: async (req, res) => {
+      try {
+        const body = await readJson(req);
+        const tag = typeof body?.tag === 'string' ? body.tag.trim() : '';
+        const checkedAt = Number(body?.checkedAt);
+        if (!/^[0-9A-Za-z.\-]{1,40}$/.test(tag) || !Number.isFinite(checkedAt)) {
+          sendJson(res, 400, { ok: false, reason: 'invalid' });
+          return;
+        }
+        await writePrivateJson(UPDATE_CHECK_PATH, { tag, checkedAt });
+        sendJson(res, 200, { ok: true });
+      } catch (error) {
+        sendJson(res, 500, { ok: false });
+      }
+    },
     status: async (_req, res) => {
       const startedAt = diagnostics.start();
       try {
-        sendJson(res, 200, await localTtsTransport.status());
+        sendJson(res, 200, await localTtsTransport().status());
       } catch (error) {
         diagnostics.warn('status.request', {}, error);
         sendJson(res, 200, { available: false, reason: '本地 Fairy 服务未启动。' });
@@ -573,7 +640,7 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
         if (Array.from(text).length > MAX_TTS_TEXT_LENGTH) throw Object.assign(new Error('large'), { code: 'text-too-large' });
         activeTtsController?.abort('superseded');
         activeTtsController = controller;
-        const upstream = await localTtsTransport.stream(text, controller.signal);
+        const upstream = await localTtsTransport().stream(text, controller.signal);
         const response = upstream.response || upstream;
         releaseUpstream = upstream.release || null;
         if (!response.ok) throw Object.assign(new Error('local synthesis failed'), { code: 'local-service-failed' });
@@ -603,12 +670,131 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
         scope.cancel('request-complete');
       }
     },
+    // [local patch 0.2.3] 读取/保存 SoVITS 地址与参考音频路径（不含任何密钥）。
+    // [local patch 0.3.2] 新增 engine / base 字段：读走 readRuntimeConfig()、写走 saveRuntimeConfig()，
+    // 两者都已认得新字段，所以这里不需要额外分支 —— 请求体整体透传即可。
+    config: async (req, res) => {
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        sendJson(res, 200, readRuntimeConfig());
+        return;
+      }
+      try {
+        const body = await readJson(req, 10_000);
+        const saved = await saveRuntimeConfig(body);
+        if (saved.ok !== true) {
+          sendJson(res, 400, { error: { code: 'config-invalid', message: saved.error } });
+          return;
+        }
+        diagnostics.info('config.save', { base: saved.config.base });
+        sendJson(res, 200, { ok: true, ...saved.config });
+      } catch (error) {
+        const code = error?.message === 'invalid-json' ? 'invalid-json' : 'config-invalid';
+        diagnostics.warn('config.save', { code }, error);
+        sendJson(res, 400, { error: { code, message: code === 'invalid-json' ? '请求格式不对。' : '保存失败。' } });
+      }
+    },
+    // [local patch 0.2.3] 朗读链路自检：逐项给出人话结论 + 怎么修。
+    selfcheck: async (req, res) => {
+      const startedAt = diagnostics.start();
+      let withSynthesis = true;
+      try {
+        const url = new URL(req.url ?? '/', 'http://x');
+        withSynthesis = url.searchParams.get('synth') !== '0';
+        /* [local patch 0.3.2] 用「界面上当前填的」临时覆盖已保存的配置（**不写磁盘**），
+         * 这样「引擎切成 MOSS → 点自检」测的就是 MOSS，不必先保存。 */
+        const config = applyConfigOverrides(readRuntimeConfig(), {
+          engine: url.searchParams.get('engine') ?? undefined,
+          base: url.searchParams.get('base') ?? undefined,
+          referenceAudioPath: url.searchParams.get('ref') ?? undefined,
+        });
+        sendJson(res, 200, await runVoiceSelfCheck({ fetchImpl, withSynthesis, config }));
+      } catch (error) {
+        diagnostics.warn('selfcheck.run', {}, error);
+        sendJson(res, 200, {
+          ok: false,
+          headline: `自检本身出错了：${String(error?.message || error)}`,
+          checks: [],
+          config: readRuntimeConfig(),
+        });
+      } finally {
+        diagnostics.metric('selfcheck.run', startedAt, { synth: withSynthesis }, { thresholdMs: 500 });
+      }
+    },
   };
 }
 
 export function apply(ctx) {
   return diagnostics.guard('apply', () => {
+  /* [local patch 0.3.2] 启动时把「参考音频」目录建出来（幂等，已有就不动）。
+   * 不建的话使用者根本不知道该把音色文件放哪儿 —— 自检只会干说「参考音频没找到」。
+   * 失败也不影响启动：日志里 warn 一下就好，不该因为一个目录建不出来就让插件挂掉。 */
+  void ensureFairyDirectories().catch((error) => diagnostics.warn('reference.dir', {}, error));
+  /* [local patch 1.0.0 + compat-hardening] 启动时自动拉起 GPT-SoVITS api_v2（端口9880）。
+   * 旧实现整个委托给 start_api.bat，但 bat 的 `netstat | findstr` 端口守卫在本机
+   * 出现过挂死（findstr 不退出 → python 永远起不来，autostart.log 里只留一行
+   * spawn attempt 没有 exit），历史上还有大量 exit 1/2/0xC000013A 的失败记录。
+   * 现改为：Node 侧先探 9880（800ms 超时）—— 已监听就跳过（防双开）；
+   * 未监听则用 cmd 只做输出重定向、直接拉 .venv 的 python（参数与 bat 完全一致，
+   * 输出同样接 api.log/api.err），跳过 bat 里会挂死的 netstat 守卫。
+   * 直连启动本身抛异常时回落原 bat 路径。日志格式与旧版保持兼容。 */
+  try {
+    const bat = 'C:\\GPT-SoVITS\\start_api.bat';
+    const gptDir = 'C:\\GPT-SoVITS';
+    const logFile = join(homedir(), '.dsh', 'fairy-voice', 'autostart.log');
+    const stamp = new Date().toISOString();
+    void (async () => {
+      try {
+        await mkdir(dirname(logFile), { recursive: true });
+        await appendFile(logFile, `[${stamp}] apply() spawn attempt, bat=${bat}\n`);
+      } catch {}
+    })();
+    const logLine = (text) => {
+      void (async () => { try { await appendFile(logFile, `[${new Date().toISOString()}] ${text}\n`); } catch {} })();
+    };
+    const spawnTracked = (command, args, options, tag) => {
+      const child = spawn(command, args, options);
+      child.on('error', (err) => logLine(`spawn ERROR: ${err.message}`));
+      child.on('exit', (code, signal) => logLine(`child exit code=${code} signal=${signal} (${tag})`));
+      child.unref();
+      return child;
+    };
+    const launchDirect = () => {
+      try {
+        // 绝对路径且不带引号：Node 会把整个 /c 参数包成一对引号，
+        // 形成标准的 `cmd /c "... >> api.log 2>> api.err"`；
+        // 若字符串自带引号会与 Node 的自动引号叠加，cmd 会把它当成命令名执行（exit 1）。
+        spawnTracked(
+          'cmd.exe',
+          ['/c', `${gptDir}\\.venv\\Scripts\\python.exe api_v2.py -a 127.0.0.1 -p 9880 >> api.log 2>> api.err`],
+          { cwd: gptDir, detached: true, stdio: 'ignore', windowsHide: true },
+          'direct',
+        );
+        logLine('direct launch: .venv python api_v2.py (bat port-guard bypassed)');
+      } catch (error) {
+        diagnostics.warn('sovits-autostart', {}, error);
+        logLine(`direct launch failed, falling back to bat: ${error.message}`);
+        spawnTracked('cmd.exe', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }, 'bat-fallback');
+      }
+    };
+    const probe = connect({ port: 9880, host: '127.0.0.1' });
+    probe.setTimeout(800);
+    let settled = false;
+    probe.on('connect', () => {
+      settled = true;
+      probe.destroy();
+      logLine('port 9880 already listening, skip launch');
+    });
+    probe.on('timeout', () => { probe.destroy(); if (!settled) { settled = true; launchDirect(); } });
+    probe.on('error', () => { probe.destroy(); if (!settled) { settled = true; launchDirect(); } });
+  } catch (error) {
+    diagnostics.warn('sovits-autostart', {}, error);
+  }
   const handlers = createFairyVoiceHandlers();
+  /* [local patch 0.3.5] 启动后延迟 5 秒查一次有没有新版本。
+   * 设置面板打开时还会自己查一次（浏览器走代理，成功率高），两边共用同一份缓存，3 小时内有效。
+   * 刻意【不写任何日志】：没梯子、被墙、超时，一律当没这回事 —— 这条绝不能影响启动。 */
+  const updateTimer = setTimeout(() => { void checkLatestRelease().catch(() => {}); }, UPDATE_CHECK_DELAY_MS);
+  if (typeof updateTimer.unref === 'function') updateTimer.unref();
   ctx.inject(['webServer'], (ws) => ws.effect(() => {
     const unregisterStatus = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/status', handler: handlers.status });
     const unregisterPrepare = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/prepare', handler: handlers.prepare });
@@ -616,6 +802,10 @@ export function apply(ctx) {
     const unregisterBrainStatus = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/status', handler: handlers.voiceBrainStatus });
     const unregisterBrainConfig = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/config', handler: handlers.voiceBrainConfig });
     const unregisterBrainBrief = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/brief', handler: handlers.voiceBrief });
+    const unregisterConfig = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/config', handler: handlers.config });
+    const unregisterSelfCheck = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/selfcheck', handler: handlers.selfcheck });
+    const unregisterUpdateStatus = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/update/status', handler: handlers.updateStatus });
+    const unregisterUpdateCache = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/update/cache', handler: handlers.updateCache });
     return () => {
       handlers.dispose();
       unregisterStatus?.();
@@ -624,6 +814,10 @@ export function apply(ctx) {
       unregisterBrainStatus?.();
       unregisterBrainConfig?.();
       unregisterBrainBrief?.();
+      unregisterConfig?.();
+      unregisterSelfCheck?.();
+      unregisterUpdateStatus?.();
+      unregisterUpdateCache?.();
     };
   }));
   }, { surface: 'host' });
