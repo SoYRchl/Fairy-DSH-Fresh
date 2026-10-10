@@ -11,7 +11,7 @@
     "dsh-fairy-visual": "link:../../fairy-visual/dsh-fairy-visual",
     "dsh-fairy-voice": "link:../../fairy-voice/dsh-fairy-voice",
     "dsh-message-edit": "0.2.3",
-    "dsh-reasoning-effort": "github:HanaAyane/dsh-reasoning-effort#83bc8c548749d7156a03d11d875d8117e9b5d994",
+    "dsh-reasoning-effort": "github:HanaAyane/dsh-reasoning-effort#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad",
     "hono": "4.13.2"
   },
   "dsh": {

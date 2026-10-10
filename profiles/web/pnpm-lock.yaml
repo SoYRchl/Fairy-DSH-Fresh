@@ -6,7 +6,6 @@ settings:
 
 patchedDependencies:
   dsh-message-edit@0.2.3: 48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec
-  dsh-reasoning-effort@0.6.2: 9cbcceae243982ca0241cd41471317da9112c3e61e345b3b32f205d90aec18b5
 
 importers:
 
@@ -40,19 +39,19 @@ importers:
         specifier: 0.2.3
         version: 0.2.3(patch_hash=48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec)
       dsh-reasoning-effort:
-        specifier: github:HanaAyane/dsh-reasoning-effort#83bc8c548749d7156a03d11d875d8117e9b5d994
-        version: https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994(patch_hash=9cbcceae243982ca0241cd41471317da9112c3e61e345b3b32f205d90aec18b5)
+        specifier: github:HanaAyane/dsh-reasoning-effort#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad
+        version: git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad
       hono:
         specifier: 4.13.2
         version: 4.13.2
 
 packages:
 
-  '@deepseek-ai/cosmokit@1.8.2':
-    resolution: {integrity: sha512-muBOKtSrUKU5m/xpq8ZXWL6hQ/jgd4PhU2PqH97bcxIiLEJfNwZOGQEx4t/aS/GgxRAR+ra9pMHPMtTHU4sqqA==}
+  '@deepseek-ai/cosmokit@1.8.5':
+    resolution: {integrity: sha512-LXsrlem9z8dq4sLflj2yuCuYX7KqhdzF5hZly3eZyuTo8d6oDSOXuEgC5DbQWKW+lksm6zmOutQLsP/ma6wR6A==}
 
-  '@deepseek-ai/schemastery@3.18.1':
-    resolution: {integrity: sha512-Qn0FCSwCQnpnj6SB31I6i2sIKgKWnkbJM8O0EU91Gv2UsYVvtZTl6IA0sCwk2e2MZf5S8w5hpq9QkeVvK9qwxg==}
+  '@deepseek-ai/schemastery@3.18.4':
+    resolution: {integrity: sha512-SSXO6tYuyrIqKVbmOnIq0s+riUywYzouFMcnBluHF9n4KMo2G8HvEzhCYj6pj2617/glOjbJuVInJ9hfONsjkg==}
 
   '@hono/node-server@1.19.17':
     resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
@@ -255,19 +254,22 @@ packages:
   dsh-message-edit@0.2.3:
     resolution: {integrity: sha512-qib/j8/lMdl1GOf2TCAfFlQzXtE3tJx949/T9CP9V7OEyLP+iAcomIv6FbRAUoWiwufNJ4f5unspyO5Oe7cXqA==}
 
-  dsh-reasoning-effort@https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994:
-    resolution: {gitHosted: true, integrity: sha512-gj3ZW3p/RO9Tpg3gazWJetcwQtaJtsPWYeS+mMxBUSONHj1D7SbINaeOErJiUfZaV9IWmS7zbigDWBLFYSS/4g==, tarball: https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994}
-    version: 0.6.2
+  dsh-reasoning-effort@git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad:
+    resolution: {commit: a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad, repo: git@github.com:HanaAyane/dsh-reasoning-effort.git, type: git}
+    version: 0.8.1
     engines: {node: '>=22.19'}
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.1
-      '@deepseek-ai/dsh-api-remotes': ^0.1.0-rc.6
-      '@deepseek-ai/dsh-client-connection': ^0.1.0-rc.6
-      '@deepseek-ai/dsh-client-runtime': ^0.1.0-rc.6
-      '@deepseek-ai/dsh-client-ui-conversation': ^0.1.0-rc.6
-      '@deepseek-ai/dsh-client-ui-model-selection': ^0.1.0-rc.6
-      '@deepseek-ai/dsh-client-ui-settings': ^0.1.0-rc.6
-      '@deepseek-ai/dsh-client-ui-slots': ^0.1.0-rc.6
+      '@deepseek-ai/dsh-api-remotes': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-api-session-controller': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-connection': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-locale': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-store': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-ui-conversation': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-ui-model-selection': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-ui-renderer': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-ui-settings': ^0.2.0-rc.1
+      '@deepseek-ai/dsh-client-ui-slots': ^0.2.0-rc.1
       react: ^18.2.0
 
   dunder-proto@1.0.1:
@@ -645,11 +647,11 @@ packages:
 
 snapshots:
 
-  '@deepseek-ai/cosmokit@1.8.2': {}
+  '@deepseek-ai/cosmokit@1.8.5': {}
 
-  '@deepseek-ai/schemastery@3.18.1':
+  '@deepseek-ai/schemastery@3.18.4':
     dependencies:
-      '@deepseek-ai/cosmokit': 1.8.2
+      '@deepseek-ai/cosmokit': 1.8.5
       '@standard-schema/spec': 1.1.0
 
   '@hono/node-server@1.19.17(hono@4.13.2)':
@@ -881,9 +883,9 @@ snapshots:
 
   dsh-message-edit@0.2.3(patch_hash=48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec): {}
 
-  dsh-reasoning-effort@https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994(patch_hash=9cbcceae243982ca0241cd41471317da9112c3e61e345b3b32f205d90aec18b5):
+  dsh-reasoning-effort@git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad:
     dependencies:
-      '@deepseek-ai/schemastery': 3.18.1
+      '@deepseek-ai/schemastery': 3.18.4
 
   dunder-proto@1.0.1:
     dependencies:

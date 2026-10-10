@@ -20,12 +20,16 @@ const LOCAL_PACKAGES = [
 const DEFAULT_PROFILE = path.join(os.homedir(), '.dsh', 'profiles', 'web');
 const DEFAULT_RUNTIME = path.join(os.homedir(), '.local', 'lib', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-client-runtime', 'lib', 'client.js');
 const VISUAL_SETTINGS_VERSION = '0.1.1-rc.2';
-const REASONING_VERSION = '0.6.2';
-const REASONING_SOURCE = 'github:HanaAyane/dsh-reasoning-effort#main';
-const REASONING_LOCK_SOURCE = 'https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994';
-const REASONING_PATCH_HASH = '9cbcceae243982ca0241cd41471317da9112c3e61e345b3b32f205d90aec18b5';
+const REASONING_VERSION = '0.8.1';
+// [local migration 2026-10-10] 0.6.2 -> 0.8.1：上游已把 peer 全部迁到 ^0.2.0-rc.1，
+// 并内置原生设置项（reasoning-effort-chibi-thumb），本地 patch 已放弃。
+// 本机 https/codeload 因 schannel 证书校验失败不可用，而 git+ssh 可用，
+// 故 pnpm 由 git+ssh 解析该依赖，lockfile 记录 git+ssh 形式而非 codeload tarball。
+const REASONING_COMMIT = 'a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad';
+const REASONING_SOURCE = `github:HanaAyane/dsh-reasoning-effort#${REASONING_COMMIT}`;
+const REASONING_LOCK_SOURCE = `git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#${REASONING_COMMIT}`;
 const MESSAGE_EDIT_VERSION = '0.2.3';
-const MESSAGE_EDIT_PATCH_HASH = '6365b2e53f9a2f366898ef2d78648c34823df11e9bfc2a47162e6626803763cb';
+const MESSAGE_EDIT_PATCH_HASH = '48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec';
 const CAPABILITY_MATRIX_PATH = process.env.DSH_CAPABILITY_MATRIX
   || path.join(os.homedir(), '.dsh', 'fairy-system', 'capability-matrix.json');
 
@@ -298,8 +302,8 @@ function verifyProfileContracts(profileRoot, packages, matrix) {
   assert(visualAdapter.includes('modelSelection') && visualAdapter.includes('reasoningControl'), 'model/reasoning adapter capabilities are missing');
 
   const lock = read(path.join(profileRoot, 'pnpm-lock.yaml'));
-  assert(lock.includes(`${REASONING_LOCK_SOURCE}(patch_hash=${REASONING_PATCH_HASH})`),
-    'reasoning-effort lock source or local patch drifted; review the branch resolution before upgrade');
+  assert(lock.includes(REASONING_LOCK_SOURCE),
+    'reasoning-effort lock source drifted; review the commit resolution before upgrade');
   assert(lock.includes(`dsh-message-edit@${MESSAGE_EDIT_VERSION}(patch_hash=${MESSAGE_EDIT_PATCH_HASH})`),
     'message-edit lock patch drifted; review its bundled client API before upgrade');
   const reasoningPackage = resolvePackage(profileRoot, 'dsh-reasoning-effort', 'reasoning-effort package');
@@ -309,13 +313,16 @@ function verifyProfileContracts(profileRoot, packages, matrix) {
   assert(JSON.stringify(reasoningPackage.manifest.peerDependencies) === JSON.stringify({
     react: '^18.2.0',
     '@deepseek-ai/cordis': '^4.0.1',
-    '@deepseek-ai/dsh-client-runtime': '^0.1.0-rc.6',
-    '@deepseek-ai/dsh-client-connection': '^0.1.0-rc.6',
-    '@deepseek-ai/dsh-client-ui-conversation': '^0.1.0-rc.6',
-    '@deepseek-ai/dsh-client-ui-model-selection': '^0.1.0-rc.6',
-    '@deepseek-ai/dsh-client-ui-settings': '^0.1.0-rc.6',
-    '@deepseek-ai/dsh-client-ui-slots': '^0.1.0-rc.6',
-    '@deepseek-ai/dsh-api-remotes': '^0.1.0-rc.6',
+    '@deepseek-ai/dsh-client-store': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-connection': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-locale': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-ui-conversation': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-ui-model-selection': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-ui-settings': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-ui-slots': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-client-ui-renderer': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-api-session-controller': '^0.2.0-rc.1',
+    '@deepseek-ai/dsh-api-remotes': '^0.2.0-rc.1',
   }), 'reasoning-effort peer API range drifted');
   assert(!messageEditPackage.manifest.peerDependencies, 'message-edit unexpectedly changed its implicit peer API boundary');
   const reasoningClient = read(path.join(reasoningPackage.path, '..', 'lib', 'client', 'index.js'));
@@ -342,14 +349,14 @@ function reportMatrix(scope, runtime, compatibility) {
     `- conversation projection: ${compatibility.capability.sessionStore}; node kinds ${compatibility.capability.nodeKinds.join('/')}; Visual activity ${compatibility.capability.activityStates.join('/')}`,
     `- Fairy Visual host settings: @deepseek-ai/dsh-settings ${compatibility.settingsVersion}; server registration only`,
     '- Fairy Visual client settings: official settingsScope.bind bridge; no dsh-settings bundle import',
-    `- dsh-reasoning-effort: ${compatibility.reasoningVersion}; declaration ${REASONING_SOURCE}; lock ${REASONING_LOCK_SOURCE.slice(-40)}; patched`,
+    `- dsh-reasoning-effort: ${compatibility.reasoningVersion}; declaration ${REASONING_SOURCE}; lock ${REASONING_LOCK_SOURCE.slice(-40)}`,
     `- dsh-message-edit: ${compatibility.messageEditVersion}; exact registry declaration; patched; no declared runtime peers`,
     'Upgrade blockers:',
     '- runtime version/SHA, Browser ModuleLoader boot protocol, or client module lifecycle contract changes',
     '- Session Store get/values implementation, user/assistant-step node kinds, session.running Visual activity authority, settings boundary, slots, DOM selectors, or reviewed zh/en ARIA labels change',
-    '- reasoning peer ranges, slots, Git lock commit/patch; or message-edit bundled ModuleLoader/slot contract and lock patch change',
+    '- reasoning peer ranges, slots, Git lock commit; or message-edit bundled ModuleLoader/slot contract and lock patch change',
     'Known review risks:',
-    '- dsh-reasoning-effort declares a moving Git branch; the lockfile commit and patch hash are the effective reproducibility pin.',
+    '- dsh-reasoning-effort pins a git commit; the lockfile commit is the effective reproducibility pin.',
     '- dsh-message-edit declares no runtime peerDependencies; its bundled client API is an implicit compatibility boundary.',
     '',
   ].join('\n'));
