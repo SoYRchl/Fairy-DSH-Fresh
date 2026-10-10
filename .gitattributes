@@ -27,6 +27,22 @@ fairy-contracts/client-dom.cjs -text
 **/vendor/diagnostics.js -text
 **/vendor/client-diagnostics.cjs -text
 **/vendor/client-dom.cjs -text
+#
+# 3) pnpm 的 patch 文件（patches/*.patch）—— 必须保持 LF。
+#    [local patch 2026-10-10] pnpm 的 patch 解析器**不接受 CRLF**：实测报
+#    `ERR_PNPM_INVALID_PATCH / invalid char in unquoted filename`。
+#    而上面的 `* text=auto` 会在 Windows 检出时把 .patch 转成 CRLF ——
+#    结果是 git 索引里存 LF、工作区却是 CRLF，于是**任何需要重新应用 patch 的
+#    `pnpm install` 都会失败**（本机实测对照：同一 patch CRLF → 装失败；
+#    仅转为 LF → 装成功 EXIT=0）。这是既有隐患，非本次引入。
+#    `eol=lf` 让它无论在哪台机器检出都保持 LF。
+*.patch text eol=lf
+#
+#    [local patch 2026-10-10] 同理，pnpm 写 pnpm-lock.yaml 时**固定写 LF**。
+#    若沿用 `* text=auto` 的 Windows 检出（CRLF），则每次 pnpm 改动 lockfile 都会
+#    把整个文件的行尾翻一遍，留下与 git 索引不一致的"永久 dirty"。实测：
+#    `corepack pnpm install --lockfile-only` 后 1279 行全部由 CRLF 变 LF。
+pnpm-lock.yaml text eol=lf
 
 *.zip  binary
 *.sha256 binary
