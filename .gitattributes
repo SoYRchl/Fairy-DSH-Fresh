@@ -20,9 +20,13 @@
 fairy-contracts/diagnostics.js -text
 fairy-contracts/client-diagnostics.cjs -text
 fairy-contracts/client-dom.cjs -text
-*/vendor/diagnostics.js -text
-*/vendor/client-diagnostics.cjs -text
-*/vendor/client-dom.cjs -text
+# [local patch 2026-10-10] 上游的 `*/vendor/...` 通配在 gitattributes 里不跨 `/`
+# 匹配，这条规则从未生效 —— Windows 检出时 vendor 副本被 text=auto 转成 CRLF，
+# 与 LF 正本的逐字节比对必挂（本机与上游 pristine 克隆均实测复现同样失败）。
+# `**` 才跨目录层级。
+**/vendor/diagnostics.js -text
+**/vendor/client-diagnostics.cjs -text
+**/vendor/client-dom.cjs -text
 
 *.zip  binary
 *.sha256 binary

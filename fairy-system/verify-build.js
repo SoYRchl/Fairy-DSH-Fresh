@@ -31,7 +31,12 @@ const packages = [
     sourceRoot: 'src',
     // Match legacy Voice package paths only. The shared public DOM attribute
     // `data-dsh-fairy-voice-control` is intentionally part of Visual's contract.
-    forbidden: [/fairy-voice\//, /agent\/pre-step/, /127\.0\.0\.1:9880/, /hHd-Xa_newSession/, /:has\(/],
+    // [local patch 2026-10-10] 合并 compat 版后，Visual 客户端 bundle 合法携带：
+    // ① fairy-voice 宿主的 REST 路由（`/fairy-voice/selfcheck` 等，fetch 调用）；
+    // ② TTS 地址默认值 `'http://127.0.0.1:9880'`（设置项，可改）。
+    // 这两类都不是"legacy 包路径直连/直连 SoVITS"，把模式收窄到模块导入与
+    // 字面量 fetch，避免误报。
+    forbidden: [/(?:require\(|from\s+)['"][^'"]*fairy-voice\//, /agent\/pre-step/, /fetch\(\s*['"`]http:\/\/127\.0\.0\.1:9880/, /hHd-Xa_newSession/, /:has\(/],
   },
   {
     dir: path.join(dshRoot, 'fairy-voice', 'dsh-fairy-voice'),
