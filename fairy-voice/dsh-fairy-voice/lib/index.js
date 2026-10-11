@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { chmod, mkdir, open, readFile, rename, unlink, writeFile, appendFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { connect } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { createPcmStreamHandler } from './server/local-tts-proxy.js';
@@ -776,17 +777,25 @@ export function apply(ctx) {
         spawnTracked('cmd.exe', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }, 'bat-fallback');
       }
     };
-    const probe = connect({ port: 9880, host: '127.0.0.1' });
-    probe.setTimeout(800);
-    let settled = false;
-    probe.on('connect', () => {
-      settled = true;
-      probe.destroy();
-      logLine('port 9880 already listening, skip launch');
-    });
-    probe.on('timeout', () => { probe.destroy(); if (!settled) { settled = true; launchDirect(); } });
-    probe.on('error', () => { probe.destroy(); if (!settled) { settled = true; launchDirect(); } });
-  } catch (error) {
+    /* [local patch 2026-10-11] 目录守卫：GPT-SoVITS 未安装时（C:\GPT-SoVITS 不存在）
+     * 跳过自启探测。此前每次 apply 都会 spawn 失败并在 autostart.log 刷
+     * "spawn cmd.exe ENOENT" —— 真因是 cwd 不存在（libuv 报 ENOENT 时把错误
+     * 归到命令名上）。目录（重新）出现后此守卫自动放行，无需改代码。 */
+    if (!existsSync(gptDir)) {
+      logLine('autostart skipped: ' + gptDir + ' 不存在（GPT-SoVITS 未安装或已移动）。引擎将报告不可用；安装后自动恢复自启。');
+    } else {
+      const probe = connect({ port: 9880, host: '127.0.0.1' });
+      probe.setTimeout(800);
+      let settled = false;
+      probe.on('connect', () => {
+        settled = true;
+        probe.destroy();
+        logLine('port 9880 already listening, skip launch');
+      });
+      probe.on('timeout', () => { probe.destroy(); if (!settled) { settled = true; launchDirect(); } });
+      probe.on('error', () => { probe.destroy(); if (!settled) { settled = true; launchDirect(); } });
+
+    }  } catch (error) {
     diagnostics.warn('sovits-autostart', {}, error);
   }
   const handlers = createFairyVoiceHandlers();
