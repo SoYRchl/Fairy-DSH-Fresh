@@ -101,7 +101,11 @@ const OFFICIAL_SELECTORS = Object.freeze({
   rootSurface: '[data-slot="root"]',
   sidebar: '[data-slot="sidebar"]',
   sidebarResizeHandle: '[data-side="sidebar"]',
-  conversation: '[data-slot="conversation"]',
+  // 0.1.x renders the conversation surface under [data-slot="conversation"];
+  // 0.2.x renamed that container to [data-slot="main.conversation"] (the old
+  // name is gone from the shipped web graph). Keep both so the adapter stays
+  // the single coupling point across kernels.
+  conversation: '[data-slot="conversation"], [data-slot="main.conversation"]',
   shellOverlay: '[data-slot="shell.overlay"]',
   settingsDialog: '[data-slot="sidebar.settings"] [role="dialog"]',
   phaseHero: '[data-phase="hero"]',
@@ -109,7 +113,10 @@ const OFFICIAL_SELECTORS = Object.freeze({
   phaseAny: '[data-phase]',
   composerSeat: '[data-composer-seat]',
   composerCard: '[data-composer-card="true"]',
-  composerTextarea: 'textarea',
+  // 0.1.x ships a plain <textarea> composer; 0.2.x replaced it with a
+  // contenteditable host marked data-composer-input. Querying both keeps the
+  // hero placeholder and takeover logic working on either kernel.
+  composerTextarea: 'textarea, [data-composer-input]',
   composerAttachmentsSlot: `[data-slot="${OFFICIAL_SLOT_VALUES.composerAttachments}"]`,
   conversationScroll: '[data-conversation-scroll]',
   inputScroll: '[data-input-scroll]',

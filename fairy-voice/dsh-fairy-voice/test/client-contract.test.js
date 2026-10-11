@@ -355,6 +355,11 @@ test('voice controls use a compact icon toggle and custom volume slider', () => 
   assert.match(source, /\[FAIRY_VOICE_CONTROL_ATTRIBUTE\]: 'true'/);
   assert.match(source, /className: 'dsh-fairy-voice-auto'/);
   assert.match(source, /className: 'dsh-fairy-voice-volume'/);
+  // The volume slider must disappear entirely while the TTS engine is
+  // offline: a dead disabled range input was repeatedly mistaken for the
+  // reasoning-effort control.
+  assert.match(source, /engineAvailable \? jsx\.jsx\(Tooltip, \{ label: `语音音量/);
+  assert.match(source, /'aria-label': '语音音量', style: \{ '--dsh-fairy-volume': `\$\{Math\.round\(volume \* 100\)\}%` \} \}\) \}\) : null,/);
   assert.match(source, /IconPauseOutline16/);
   assert.doesNotMatch(source, /children: '本地 Fairy'/);
 });

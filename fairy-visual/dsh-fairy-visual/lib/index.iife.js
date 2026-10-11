@@ -619,7 +619,7 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 			rootSurface: "[data-slot=\"root\"]",
 			sidebar: "[data-slot=\"sidebar\"]",
 			sidebarResizeHandle: "[data-side=\"sidebar\"]",
-			conversation: "[data-slot=\"conversation\"]",
+			conversation: "[data-slot=\"conversation\"], [data-slot=\"main.conversation\"]",
 			shellOverlay: "[data-slot=\"shell.overlay\"]",
 			settingsDialog: "[data-slot=\"sidebar.settings\"] [role=\"dialog\"]",
 			phaseHero: "[data-phase=\"hero\"]",
@@ -627,7 +627,7 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 			phaseAny: "[data-phase]",
 			composerSeat: "[data-composer-seat]",
 			composerCard: "[data-composer-card=\"true\"]",
-			composerTextarea: "textarea",
+			composerTextarea: "textarea, [data-composer-input]",
 			composerAttachmentsSlot: `[data-slot="${OFFICIAL_SLOT_VALUES.composerAttachments}"]`,
 			conversationScroll: "[data-conversation-scroll]",
 			inputScroll: "[data-input-scroll]",
@@ -5665,7 +5665,9 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
 							return;
 						}
 						host.style.left = Math.round(rect.right - host.offsetWidth - 28) + "px";
-						host.style.top = Math.round(rect.top + 8) + "px";
+						const heroHeader = hero.querySelector("header");
+						const headerBottom = heroHeader ? heroHeader.getBoundingClientRect().bottom : rect.top + 8;
+						host.style.top = Math.round(Math.max(rect.top + 8, headerBottom + 8)) + "px";
 						setPositioned(true);
 					};
 					const schedule = () => {

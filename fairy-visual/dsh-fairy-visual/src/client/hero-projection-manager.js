@@ -56,9 +56,17 @@ function install(_lifecycle = null, { Toggle, useController }) {
             return;
           }
           host.style.left = Math.round(rect.right - host.offsetWidth - 28) + 'px';
+          // The 0.2.x hero root spans the whole conversation column including
+          // the window-drag header, so the legacy +8 inset would park the
+          // toggle inside that header row. Anchor below the hero's own header
+          // when it renders one; kernels whose hero surface starts below the
+          // header keep the legacy inset because their header bottom lands on
+          // the hero top edge.
+          const heroHeader = hero.querySelector('header');
+          const headerBottom = heroHeader ? heroHeader.getBoundingClientRect().bottom : rect.top + 8;
           // Match the active conversation header: 44px header minus the
           // 28px toggle gives the same 8px top inset used by its flex layout.
-          host.style.top = Math.round(rect.top + 8) + 'px';
+          host.style.top = Math.round(Math.max(rect.top + 8, headerBottom + 8)) + 'px';
           setPositioned(true);
         };
         const schedule = () => {

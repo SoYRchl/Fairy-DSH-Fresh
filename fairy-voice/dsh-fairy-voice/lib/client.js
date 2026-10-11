@@ -1551,7 +1551,10 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       return jsx.jsxs('span', { className: 'dsh-fairy-voice-controls', role: 'group', 'aria-label': 'Fairy 朗读控制', [FAIRY_VOICE_CONTROL_ATTRIBUTE]: 'true', children: [
         jsx.jsx(Tooltip, { label: engineAvailable ? autoLabel : availability.reason, children: jsx.jsx('button', { type: 'button', className: 'dsh-fairy-voice-auto', 'data-dsh-fairy-auto-control': 'true', 'data-on': autoRead ? 'true' : 'false', disabled: !engineAvailable, onClick: () => setAutoRead((value) => !value), 'aria-label': autoLabel, 'aria-pressed': autoRead, children: jsx.jsx('span', { className: 'dsh-fairy-voice-auto-dot', 'data-dsh-fairy-auto-dot': 'true', 'aria-hidden': 'true' }) }) }),
         jsx.jsx('span', { className: 'dsh-fairy-voice-waveform', 'data-dsh-fairy-waveform': 'true', 'aria-hidden': 'true', children: waveform }),
-        jsx.jsx(Tooltip, { label: `语音音量 ${Math.round(volume * 100)}%`, children: jsx.jsx('input', { className: 'dsh-fairy-voice-volume', 'data-dsh-fairy-volume-input': 'true', disabled: !engineAvailable, min: '0', max: '1', step: '0.05', type: 'range', value: volume, onChange: (event) => setVolume(Number(event.target.value)), 'aria-label': '语音音量', style: { '--dsh-fairy-volume': `${Math.round(volume * 100)}%` } }) }),
+        // A dead disabled slider read as a broken effort control. The local TTS
+        // engine is frequently offline, so render the volume slider only when
+        // the engine is actually reachable and keep the row quiet otherwise.
+        engineAvailable ? jsx.jsx(Tooltip, { label: `语音音量 ${Math.round(volume * 100)}%`, children: jsx.jsx('input', { className: 'dsh-fairy-voice-volume', 'data-dsh-fairy-volume-input': 'true', disabled: !engineAvailable, min: '0', max: '1', step: '0.05', type: 'range', value: volume, onChange: (event) => setVolume(Number(event.target.value)), 'aria-label': '语音音量', style: { '--dsh-fairy-volume': `${Math.round(volume * 100)}%` } }) }) : null,
         engine === 'fairy' && state.status === 'error' ? jsx.jsx('span', { title: state.error, style: { color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px', maxWidth: '96px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, children: '朗读失败' }) : null
       ] });
     }

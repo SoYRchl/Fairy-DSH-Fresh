@@ -204,7 +204,7 @@ test('keeps the hero toggle visibility under React state ownership', () => {
   assert.match(host, /React\.useLayoutEffect\(\(\) =>/);
   assert.match(host, /frame = 0;\s*bindConversation\(\);\s*const conversationSurface = conversation\(document\);/);
   assert.match(host, /phase\(conversationSurface, 'active'\)\s*\? null/);
-  assert.match(host, /host\.style\.top = Math\.round\(rect\.top \+ 8\)/);
+  assert.match(host, /host\.style\.top = Math\.round\(Math\.max\(rect\.top \+ 8, headerBottom \+ 8\)\)/);
   assert.match(host, /const bindConversation = \(\) =>/);
   assert.match(host, /if \(conversationNode === observedConversation\) return/);
   assert.match(host, /conversationObserver\.observe\(conversationNode/);
