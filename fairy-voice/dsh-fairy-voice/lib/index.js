@@ -739,8 +739,8 @@ export function apply(ctx) {
    * 输出同样接 api.log/api.err），跳过 bat 里会挂死的 netstat 守卫。
    * 直连启动本身抛异常时回落原 bat 路径。日志格式与旧版保持兼容。 */
   try {
-    const bat = 'C:\\GPT-SoVITS\\start_api.bat';
-    const gptDir = 'C:\\GPT-SoVITS';
+    const bat = '<SOVITS_DIR>\\启动GPT-SoVITS.bat';
+    const gptDir = '<SOVITS_DIR>';
     const logFile = join(homedir(), '.dsh', 'fairy-voice', 'autostart.log');
     const stamp = new Date().toISOString();
     void (async () => {
@@ -777,7 +777,7 @@ export function apply(ctx) {
         spawnTracked('cmd.exe', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }, 'bat-fallback');
       }
     };
-    /* [local patch 2026-10-11] 目录守卫：GPT-SoVITS 未安装时（C:\GPT-SoVITS 不存在）
+    /* [local patch 2026-10-11] 目录守卫：GPT-SoVITS 未安装时（安装目录不存在）
      * 跳过自启探测。此前每次 apply 都会 spawn 失败并在 autostart.log 刷
      * "spawn cmd.exe ENOENT" —— 真因是 cwd 不存在（libuv 报 ENOENT 时把错误
      * 归到命令名上）。目录（重新）出现后此守卫自动放行，无需改代码。 */
