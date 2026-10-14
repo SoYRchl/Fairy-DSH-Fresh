@@ -474,6 +474,32 @@ CI 见 [`.github/workflows/test.yml`](.github/workflows/test.yml)，在 **window
 > [`tools/tests/known-stale.mjs`](tools/tests/known-stale.mjs) 里，含**失效原因与修法**。
 > 详见 [`docs/测试与CI.md`](docs/测试与CI.md)。
 
+## 十九、换台机器怎么拉起来（bootstrap）
+
+> 目标：**按这一节做一遍，就能得到和开发机一样的状态**。所有手工步骤都收进了脚本，
+> 每一步都幂等，跑多少次都安全。
+
+```powershell
+# 一条命令：依赖 → link: junction → 产物 mtime → 自检
+node tools\bootstrap.mjs
+
+# 只体检、不改任何东西（CI / 排查用；有问题会返回非 0）
+node tools\bootstrap.mjs --check
+```
+
+它按顺序做四件事，**顺序不能换**：
+
+| 步骤 | 谁在做 | 为什么必须 |
+| --- | --- | --- |
+| 1. 依赖 | 6 个装包点各跑一次 `corepack pnpm install`（5 个插件包 + `profiles/web`，后者放最后） | ★ **依赖分两处装**：`profiles/web` **和** 5 个插件包各自的 `node_modules`。只装一处，插件加载不全。`profiles/web` 放最后是因为它的 `postinstall` 要打 orb 补丁，那时 `dsh-orb` 必须已解包 |
+| 2. junction | [`tools/restore-link-deps.mjs`](tools/restore-link-deps.mjs) | ★ **pnpm 11/12 不建 `link:` 链接**。少了这 5 个 junction，`profiles/web/node_modules` 里就没有插件包，bundle 解析不到、插件不 activate。脚本幂等：链接已指向正确目标就不动它 |
+| 3. mtime | [`tools/bless-build-mtimes.mjs`](tools/bless-build-mtimes.mjs) | git checkout 按索引顺序写盘，`package.json` 常比 `lib/*` 产物新几十毫秒，build-freshness 契约误报。**只能推 mtime，绝不能重新构建** —— `lib/client.js` 是权威产物、内含 compat 层，`src/` 里没有，从 src 重建 = 整页白屏 |
+| 4. orb 补丁 | `profiles/web` 的 `postinstall` → [`tools/patch-dsh-orb.mjs`](tools/patch-dsh-orb.mjs) | 幂等 patcher：默认头像（Fairy 眼睛）+ 头像路由 mime + 预设画廊 + **悬浮球 topmost 看门狗**。重装 `dsh-orb` 后补丁会丢，靠 postinstall 自动补；手跑也安全（已打就跳过） |
+
+> ⚠️ **悬浮球必须在沙箱外启动。** 在受限沙箱里跑 DSH 时，orb helper 的 GPU 子进程会连续
+> `exit_code=-1073741819`，五次后 FATAL `GPU process isn't usable`，球**永远起不来**；
+> 换到用户权限（双击桌面快捷方式）则零崩溃。排查时别把「沙箱内起不来」误判成程序 bug。
+
 ---
 | [`docs/验证报告.md`](docs/验证报告.md) | 隔离环境实测过程与结论（宿主侧 / 客户端侧 / 唯一降级项 / 未覆盖项） |
 | [`docs/风险-DSH换代.md`](docs/风险-DSH换代.md) | DSH 换代风险登记 |

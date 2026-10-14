@@ -102,3 +102,7 @@ for (const pkg of PACKAGES) {
 
 console.log('');
 console.log(`产物 ${PACKAGES.length} 个包：已满足 ${clean}，本次归位 ${fixed}${apply ? '' : '（未加 --apply，仅报告）'}`);
+
+// 报告模式下把「有待归位项」表达成退出码，好让 `bootstrap.mjs --check` 能据此判失败。
+// 语义：--apply 后应是 0；只报告时非 0 ＝ 状态不可复现。
+if (!apply && fixed === 0 && clean < PACKAGES.length) process.exit(1);

@@ -27,3 +27,10 @@ dist/
 Thumbs.db
 Desktop.ini
 profiles/web/orb-update.json
+
+# ---- DSH 运行时回写到 profile 目录的状态文件（不进仓库）----
+# 这些是 dsh-orb 在运行时自己写的：球的开关、当前头像（含下载的二进制）。
+# 把它们提交进去等于把「某台机器上按了一下球」固化成分发内容。
+profiles/web/ball-enabled.json
+profiles/web/orb-avatar.json
+profiles/web/orb-avatar
