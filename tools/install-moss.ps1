@@ -17,7 +17,7 @@
                         所以先试官方（走代理）、失败自动回退镜像
 
   用法：
-    .\install-moss.ps1                          # 默认装到 <MOSS_HOME>，端口 18083
+    .\install-moss.ps1                          # 默认装到 %USERPROFILE%\MOSS-TTS-nano，端口 18083
     .\install-moss.ps1 -Root D:\MOSS-TTS-nano   # 换目录
     .\install-moss.ps1 -NoMirror                # 不用清华 PyPI 镜像
     .\install-moss.ps1 -SkipWeights             # 先不下载模型权重（约 730 MB）
@@ -30,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Root = '<MOSS_HOME>',
+  [string]$Root = "$env:USERPROFILE\MOSS-TTS-nano",
   [int]$Port = 18083,
   [string]$Proxy = '',
   [string]$HfEndpoint = '',

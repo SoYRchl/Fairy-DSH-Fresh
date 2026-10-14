@@ -3,16 +3,16 @@
 > **DSH Desktop 跨内核兼容版 Fairy 插件套件** —— 在 `dsh` 内核大版本换代期间，让 Fairy（视觉浮层 / HDD 主题 / 朗读 / 余额）继续可用。
 >
 > 本仓库由 **[SoYRchl](https://github.com/SoYRchl)** 维护，是 `Guzhou2002/Fairy-DSH-Optimized` v0.3.8 的下游 fork，
-> 追加 **18 个内核兼容提交**，实测覆盖 `dsh 0.1.5-rc.1` 与 `dsh 0.2.0-rc.2` 两条内核线
+> 追加 **31 个内核兼容提交**，实测覆盖 `dsh 0.1.5-rc.1` 与 `dsh 0.2.0-rc.2` 两条内核线
 > （对应 **DSH Desktop 2.0.9** 与 **2.0.17**），修复 10 类内核破坏性变更导致的故障。
 
 | | |
 | --- | --- |
-| **当前版本** | 基线 `v0.3.8`（孤舟版）+ 18 个兼容提交 → 标签 `v0.3.8-compat.1` |
+| **当前版本** | 基线 `v0.3.8`（孤舟版）+ 31 个兼容提交 → 标签 `v0.3.8-compat.1` |
 | **插件包版本** | `dsh-fairy-visual` 0.1.8 · `dsh-fairy-voice` 1.0.5 · `dsh-balance-meter` 0.2.0 |
 | **适配内核** | `dsh 0.1.5-rc.1` → `dsh 0.2.0-rc.2` ｜ DSH Desktop `2.0.9` → `2.0.17` |
 | **许可** | Apache-2.0（继承自上游，见 [LICENSE](LICENSE) / [NOTICE](NOTICE)） |
-| **下载** | **[本仓库 Releases](https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest)** |
+| **安装** | **源码形态** —— 预构建 Release 尚未发布，见 [§三、装起来](#三装起来) |
 | **问题反馈** | **[本仓库 Issues](https://github.com/SoYRchl/Fairy-DSH-Fresh/issues)** |
 
 ---
@@ -26,7 +26,7 @@
 | --- | --- | --- | --- |
 | 🍊 **原作者** | **橙汁本色**（`Chengzhibense`） | [Chengzhibense/Fairy-DSH](https://github.com/Chengzhibense/Fairy-DSH) | **Fairy 插件套件的全部原创代码**：人设语料、HDD 视觉、布局、mascot、朗读逻辑。Apache-2.0。本项目的技术地基 |
 | ⛵ **上游 fork（本仓库的直接基线）** | **孤舟蓑笠**（`Guzhou2002`） | [Guzhou2002/Fairy-DSH-Optimized](https://github.com/Guzhou2002/Fairy-DSH-Optimized) | 「孤舟版」：把上游整理成**可分发的整合包** —— `install.cmd` 一键安装、GitHub Releases + SHA256、朗读自检面板、设置栏合并、MOSS-TTS-Nano 第二朗读引擎、MOSS 一键安装脚本、新手文档。**本仓库的基线为 v0.3.8** |
-| 🍴 **本仓库（跨内核兼容版）** | **SoYRchl** | [SoYRchl/Fairy-DSH-Fresh](https://github.com/SoYRchl/Fairy-DSH-Fresh) | 在孤舟版 v0.3.8 之上修复 **`dsh` 内核换代造成的故障**：18 个兼容提交、10 类故障，双内核 feature-detection 兼容 |
+| 🍴 **本仓库（跨内核兼容版）** | **SoYRchl** | [SoYRchl/Fairy-DSH-Fresh](https://github.com/SoYRchl/Fairy-DSH-Fresh) | 在孤舟版 v0.3.8 之上修复 **`dsh` 内核换代造成的故障**：31 个兼容提交、10 类故障，双内核 feature-detection 兼容 |
 | ☁️ **平行分支（无血缘）** | `addsas222` | [addsas222/Fairy-DSH-Exp](https://github.com/addsas222/Fairy-DSH-Exp) | 「云朵版」：另一支**独立**的功能实验版（人格包引擎、多会话、多 TTS 引擎），与孤舟版 / 本仓库**无代码血缘** |
 
 ```
@@ -41,7 +41,7 @@ addsas222/Fairy-DSH-Exp          （云朵版 · 独立分支 · 与上面无血
 
 ### ⚠️ 归属红线
 
-- **上游作者与孤舟版作者均未参与本仓库的 18 个兼容改动。** 本仓库的兼容提交由 `SoYRchl` 独立完成。
+- **上游作者与孤舟版作者均未参与本仓库的 31 个兼容改动。** 本仓库的兼容提交由 `SoYRchl` 独立完成。
 - 本仓库是**非官方**分支，**不代表**原作者、孤舟版作者或 DeepSeek 官方的立场，**未获任何背书**。
 - **本仓库的问题请开 [本仓库 Issues](https://github.com/SoYRchl/Fairy-DSH-Fresh/issues)**，不要打扰上游作者。
 - 上游通用功能问题（与内核兼容无关的）请去 [孤舟版仓库](https://github.com/Guzhou2002/Fairy-DSH-Optimized/issues)。
@@ -73,9 +73,9 @@ addsas222/Fairy-DSH-Exp          （云朵版 · 独立分支 · 与上面无血
 | 诊断探针 | ❌ | 部分 | ✅ `__FAIRY_VOICE_DIAG__` 放音策略 / 快照 / activeKey | — |
 | 内核适配策略 | — | 版本钉死 | **feature-detection 双代解析，不判版本号** | — |
 
-### 2.2 本仓库独有的：18 个兼容提交修了什么
+### 2.2 本仓库独有的：31 个兼容提交修了什么
 
-**起因**：DSH Desktop 升级到新版内核（`dsh 0.1.7+` / `0.2.0-rc.2`）后，新版内核的多项**破坏性变更**导致 Fairy 三个插件整体崩溃、**应用无法启动**（client Loader 无任何错误信息）。本仓库的 18 个提交就是为此而生。
+**起因**：DSH Desktop 升级到新版内核（`dsh 0.1.7+` / `0.2.0-rc.2`）后，新版内核的多项**破坏性变更**导致 Fairy 三个插件整体崩溃、**应用无法启动**（client Loader 无任何错误信息）。本仓库的 31 个提交就是为此而生。
 
 | # | 故障现象 | 根因 | 提交 |
 | --- | --- | --- | --- |
@@ -113,6 +113,15 @@ addsas222/Fairy-DSH-Exp          （云朵版 · 独立分支 · 与上面无血
 ---
 
 ## 三、装起来
+
+> ⚠️ **本仓库当前为源码发布形态。** 预构建的 Release 附件（`.tgz`、`install.cmd` 等）**尚未发布**，
+> 因此下文中所有 `releases/latest/download/...` 链接与「双击安装」按钮**暂时不可用（会 404）**。
+> 现阶段请走下面两种方式之一：
+>
+> 1. **让 Agent 按 [AGENTS.md](AGENTS.md) 从本仓库源码安装**；
+> 2. **自己 clone 本仓库，用 `dsh plugin --profile web add <本地路径>` 装**。
+>
+> 预构建附件会在整壳（独立应用）完成后随 Release 一并发布。
 
 ### 🤖 让 Agent 帮你装
 
@@ -366,7 +375,7 @@ DSH 升级后若界面元素变化，插件会**静默降级**（有 capability 
 
 | 版本 | 改了什么 | 归属 |
 | --- | --- | --- |
-| **本 fork** | 18 个内核兼容提交（10 类故障，见 §2.2） | 🍴 **SoYRchl** |
+| **本 fork** | 31 个内核兼容提交（10 类故障，见 §2.2） | 🍴 **SoYRchl** |
 | 0.3.2 | 🆕 朗读引擎可切换：新增 MOSS-TTS-Nano（CPU 就能跑） | ⛵ 孤舟版 |
 | 0.3.1 | 消息识别适配 DSH `0.1.2-rc.1`；诊断信息与右下角异常提示 | ⛵ 孤舟版 |
 | 0.3.0 | 分发方式换成 `.tgz` + `install.cmd` | ⛵ 孤舟版 |
@@ -390,7 +399,7 @@ DSH 升级后若界面元素变化，插件会**静默降级**（有 capability 
 | --- | --- |
 | **Repository Owner / Maintainer** | **[SoYRchl](https://github.com/SoYRchl)** |
 
-> 本仓库的 **18 个跨内核兼容提交、全部文档重写、Release 发布与日常维护**均由此账号完成。
+> 本仓库的 **31 个跨内核兼容提交、全部文档重写、Release 发布与日常维护**均由此账号完成。
 > 提交身份：`SoYRchl <SoYRchl@users.noreply.github.com>`
 
 **上游贡献者（非本仓库成员，向他们的工作致谢）：**
@@ -456,7 +465,7 @@ node tools\sync-version.mjs --bump    # 递增 compat 序号并同步各处
 
 | 测试 | 覆盖什么 |
 | --- | --- |
-| [`tools/tests/compat-patches.test.js`](tools/tests/compat-patches.test.js) | **18 个兼容提交的 11 个关键点**：图标双代解析、`settingsScope` 兜底、`workflow-ptc`、预设声明行、`selectedDefault`、活动会话推导、诊断探针、视觉模式解绑……每条都标了对应提交号 |
+| [`tools/tests/compat-patches.test.js`](tools/tests/compat-patches.test.js) | **31 个兼容提交的 11 个关键点**：图标双代解析、`settingsScope` 兜底、`workflow-ptc`、预设声明行、`selectedDefault`、活动会话推导、诊断探针、视觉模式解绑……每条都标了对应提交号 |
 | [`tools/tests/release-hygiene.test.js`](tools/tests/release-hygiene.test.js) | 发布卫生：`.ps1` 必须带 BOM、`.cmd` 编码契约、禁止 U+FFFD（**曾真实丢失过中文**）、URL 必须指向本仓库、版本一致性、单一 lock 文件 |
 
 CI 见 [`.github/workflows/test.yml`](.github/workflows/test.yml)，在 **windows-latest** 上跑（编码行为只在 Windows 成立），Node 20 与 22 双版本。

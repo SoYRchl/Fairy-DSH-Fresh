@@ -30,7 +30,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
 # 默认指向 MOSS-TTS-Nano 的源码目录；装到别处就设环境变量 MOSS_REPO。
-DEFAULT_REPO = os.environ.get("MOSS_REPO", r"<MOSS_HOME>\repo")
+DEFAULT_REPO = os.environ.get("MOSS_REPO", os.path.join(os.path.expanduser("~"), "MOSS-TTS-nano", "repo"))
 sys.path.insert(0, DEFAULT_REPO)
 
 from onnx_tts_runtime import OnnxTtsRuntime  # noqa: E402  (必须在 sys.path 调整之后导入)

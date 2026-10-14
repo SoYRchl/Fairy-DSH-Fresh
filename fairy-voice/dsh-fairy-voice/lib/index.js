@@ -741,8 +741,11 @@ export function apply(ctx) {
    * 输出同样接 api.log/api.err），跳过 bat 里会挂死的 netstat 守卫。
    * 直连启动本身抛异常时回落原 bat 路径。日志格式与旧版保持兼容。 */
   try {
-    const bat = '<SOVITS_DIR>\\启动GPT-SoVITS.bat';
-    const gptDir = '<SOVITS_DIR>';
+    /* [公开前清理] 原实现硬编码了作者本机的 GPT-SoVITS 安装目录。
+     * 公开版本改为：环境变量 DSH_FAIRY_SOVITS_DIR 优先，否则取 home 下的 GPT-SoVITS。
+     * 目录不存在时下面的 spawn 会失败并写 autostart.log，只影响朗读，主链路不受影响。 */
+    const gptDir = process.env.DSH_FAIRY_SOVITS_DIR || join(homedir(), 'GPT-SoVITS');
+    const bat = join(gptDir, '启动GPT-SoVITS.bat');
     const logFile = join(homedir(), '.dsh', 'fairy-voice', 'autostart.log');
     const stamp = new Date().toISOString();
     void (async () => {

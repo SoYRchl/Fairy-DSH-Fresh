@@ -147,7 +147,7 @@ def main() -> None:
     else:
         reference = None
         for candidate in (
-            Path(r"<MOSS_HOME>\repo\assets\audio\zh_1.wav"),
+            Path(os.path.join(os.path.expanduser("~"), "MOSS-TTS-nano", "repo", "assets", "audio", "zh_1.wav")),
             Path.cwd() / "assets" / "audio" / "zh_1.wav",
         ):
             if candidate.is_file():

@@ -22,6 +22,8 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, '..', '..');
 
+/* 本仓库自身。原值 SoYRchl/Fairy-DSH-Fresh 是上游 compat fork，
+ * 已不再作为本仓身份（本仓为独立整合仓，见 README 血缘一节）。 */
 const OWNER_REPO = 'SoYRchl/Fairy-DSH-Fresh';
 const UPSTREAM_REPO = 'Guzhou2002/Fairy-DSH-Optimized';
 
@@ -203,6 +205,9 @@ test('运行时代码里不得再出现更新检查 / 外部仓地址', () => {
   const runtime = [
     'fairy-visual/dsh-fairy-visual/lib/client.js',
     'fairy-voice/dsh-fairy-voice/lib/index.js',
+    /* [公开前清理] 生成器此前不在清单里 —— client.js 是它产出的，
+     * 只查产物等于只查结果不查源头：重新生成一次，删掉的外仓信息就会复活。 */
+    'lib/settings-merge.ps1',
   ];
   for (const rel of runtime) {
     const src = read(join(ROOT, rel));

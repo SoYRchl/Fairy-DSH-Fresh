@@ -1,18 +1,27 @@
 # Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
 # overrides, disables, and insert lists; `!!js` expressions allowed).
+# [公开前清理] 以下三段的原始默认值是 danger-full-access + never，即
+# 「无审批 + 全文件系统访问」——对陌生使用者等于无防护。公开版本改为「受限默认 + 环境变量开关」。
+# 合法取值（取自 DSH 内核实现，勿臆造）：
+#   mode          dsh-sandbox-policy   : read-only / workspace-write / danger-full-access（默认 read-only）
+#   policy        dsh-user-approval    : ask / never
+#   defaultPreset dsh-permission-presets 预设表: workspace-write(=workspace-write+ask) /
+#                                              danger-full-access(=danger-full-access+never)
+# 本机要恢复全自动，在启动环境里同时设这两个（缺一个会落到预设表之外的 custom 组合）：
+#   DSH_FAIRY_SANDBOX_MODE=danger-full-access  DSH_FAIRY_APPROVAL=never
 - id: sandbox-policy
   config:
-    mode: danger-full-access
+    mode: !!js process.env.DSH_FAIRY_SANDBOX_MODE || 'workspace-write'
     workspaceRoot: !!js process.cwd()
 
 - id: approval
   config:
-    policy: never
+    policy: !!js process.env.DSH_FAIRY_APPROVAL || 'ask'
 
 - id: permission
   config:
-    defaultPreset: danger-full-access
+    defaultPreset: !!js process.env.DSH_FAIRY_SANDBOX_MODE || 'workspace-write'
 
 - insert:
     - id: mcp-playwright
@@ -58,10 +67,7 @@
     - id: fairy-visual
       name: 'dsh-fairy-visual'
       inject: [ clientModules ]
-- id: ui-settings-general
-  name: "@deepseek-ai/dsh-client-ui-settings-general"
-  config:
-    welcomeNoticeVersion: 2026-09-28.1
+# [公开前清理] 原此处配置 welcomeNoticeVersion（使用者的「已读提示」本地状态），已移除，改用客户端默认值。
 - id: agent-preset-registry
   name: "@deepseek-ai/dsh-agent-preset-registry"
   config:
@@ -70,8 +76,9 @@
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
   config:
-    provider: free
-    model: kilo-auto/free
+    # [公开前清理] 原值 kilo-auto/free 是本机个人选择，改为环境变量可覆盖。
+    provider: !!js process.env.DSH_FAIRY_MODEL_PROVIDER || 'free'
+    model: !!js process.env.DSH_FAIRY_MODEL || 'mimo-v2.6-flash-free'
 - id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"
   config:
@@ -80,7 +87,8 @@
         displayName: free
         apiKeyEnv: FREE_API_KEY
         api: openai-completions
-        baseURL: http://127.0.0.1:18899/v1
+        # [公开前清理] 原值指向本机网关端口，改为环境变量可覆盖。
+        baseURL: !!js process.env.DSH_FAIRY_FREE_BASE_URL || 'http://127.0.0.1:18899/v1'
         models:
           - id: mimo-v2.6-flash-free
             name: mimo-v2.6-flash-free
