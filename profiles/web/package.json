@@ -34,5 +34,8 @@
         "dsh-orb"
       ]
     }
+  },
+  "scripts": {
+    "postinstall": "node ../../tools/patch-dsh-orb.mjs"
   }
 }
