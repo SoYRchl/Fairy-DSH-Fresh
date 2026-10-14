@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
-const { createFairyDiagnostics } = require('dsh-fairy-contracts/client-diagnostics');
+const { createFairyDiagnostics } = require('./vendor/client-diagnostics.cjs');
 const diagnostics = createFairyDiagnostics('dsh-browser-dock');
 
 process.on('uncaughtExceptionMonitor', (error, origin) => {

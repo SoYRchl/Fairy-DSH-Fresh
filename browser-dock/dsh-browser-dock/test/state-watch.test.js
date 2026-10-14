@@ -93,7 +93,10 @@ test('state watcher publishes atomic state replacements to the SSE client', asyn
   const state = JSON.parse(stateResponse.chunks.join(''));
   assert.match(state.token, /^[a-f0-9]{64}$/);
   const tokenFile = join(runtimeDir, 'control-token');
-  assert.equal((await stat(tokenFile)).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    // Windows exposes no POSIX permission bits; the 0600 contract stays verified on Linux CI.
+    assert.equal((await stat(tokenFile)).mode & 0o777, 0o600);
+  }
   assert.equal(await readFile(tokenFile, 'utf8'), state.token);
 
   const frameBytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);

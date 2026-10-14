@@ -1,6 +1,6 @@
 const React = require('react');
 const { jsx, jsxs } = require('react/jsx-runtime');
-const { createFairyDiagnostics } = require('dsh-fairy-contracts/client-diagnostics');
+const { createFairyDiagnostics } = require('../../vendor/client-diagnostics.cjs');
 const diagnostics = createFairyDiagnostics('dsh-browser-dock');
 
 const FALLBACK_POLL_MS = 800;

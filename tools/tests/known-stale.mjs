@@ -94,32 +94,12 @@ export const KNOWN_STALE = new Map([
   ],
 
   // ---------- browser-dock ----------
-  [
-    'browser-dock/dsh-browser-dock/test/contract.test.js',
-    {
-      reason: '断言"打包时内联 dsh-fairy-contracts"的旧架构',
-      detail:
-        '该用例执行 `require.resolve(\'dsh-fairy-contracts/client-diagnostics\')` 来比对' +
-        '内联前后的一致性。但兼容工作把 contracts **内联进各包 vendor/** 后，' +
-        'browser-dock 的 package.json 已**不再声明**该依赖，所以这个 require 必然失败。',
-      fix:
-        '改为从 `vendor/diagnostics.js`（内联后的实际副本）读取并比对，' +
-        '或直接断言"产物中不出现外部 dsh-fairy-contracts 引用"。',
-    },
-  ],
-  [
-    'browser-dock/dsh-browser-dock/test/state-watch.test.js',
-    {
-      reason: '加载的源码依赖已不再安装的 dsh-fairy-contracts',
-      detail:
-        '测试 import 了 browser-dock 的入口模块，而该模块（src/index.js）仍' +
-        '`import ... from \'dsh-fairy-contracts/diagnostics\'`；依赖声明已移除，' +
-        '故 ERR_MODULE_NOT_FOUND。这暴露一个真实问题：**源码入口与 vendor 内联不彻底**。',
-      fix:
-        '先把 src/index.js 改为引用 vendor 内联副本（与 .cjs/proxy 侧保持一致），' +
-        '再让该测试跑起来 —— 这属于真 bug，不只是测试问题。',
-    },
-  ],
+  // contract.test.js / state-watch.test.js 已于 T-113（2026-10-14）修复并摘除：
+  // - contract 9/9 绿：断言改为 vendor 内联副本（canonical byte-for-byte）+ 反向守卫
+  //   "三源码不得再出现 dsh-fairy-contracts"；spawn 路径断言补上上游的 .cmd 三元分支。
+  // - state-watch 绿：原"vendor 内联不彻底"已修（src/index.js 改引 vendor 副本）；
+  //   Windows 无 POSIX 权限位 → 0600 断言加平台分支，Linux CI 仍真查。
+  //   （沙箱内 fs.watch 会 EPERM，监视器自动退 800ms 轮询，不阻塞用例；真机正常。）
   [
     'browser-dock/dsh-browser-dock/test/startup.test.js',
     {

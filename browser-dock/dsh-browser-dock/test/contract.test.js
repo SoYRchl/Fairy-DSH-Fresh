@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import test from 'node:test';
 
 const proxy = await readFile(new URL('../proxy.cjs', import.meta.url), 'utf8');
@@ -10,16 +9,18 @@ const bundledClient = await readFile(new URL('../lib/client.js', import.meta.url
 const canonicalClientDiagnostics = await readFile(new URL('../../../fairy-contracts/client-diagnostics.cjs', import.meta.url), 'utf8');
 
 test('bundles the canonical client diagnostics dependency', async () => {
-  const require = createRequire(import.meta.url);
-  const linkedClientDiagnostics = await readFile(require.resolve('dsh-fairy-contracts/client-diagnostics'), 'utf8');
-  assert.equal(linkedClientDiagnostics, canonicalClientDiagnostics);
-  assert.match(client, /require\('dsh-fairy-contracts\/client-diagnostics'\)/);
+  const vendorClientDiagnostics = await readFile(new URL('../vendor/client-diagnostics.cjs', import.meta.url), 'utf8');
+  assert.equal(vendorClientDiagnostics, canonicalClientDiagnostics);
+  assert.match(proxy, /require\('\.\/vendor\/client-diagnostics\.cjs'\)/);
+  assert.match(client, /require\('\.\.\/\.\.\/vendor\/client-diagnostics\.cjs'\)/);
+  assert.match(host, /from '\.\.\/vendor\/diagnostics\.js'/);
+  assert.doesNotMatch(proxy + host + client, /dsh-fairy-contracts/);
   assert.match(bundledClient, /#region \.\.\/\.\.\/fairy-contracts\/client-diagnostics\.cjs/);
   assert.doesNotMatch(bundledClient, /require\(["']dsh-fairy-contracts\/client-diagnostics["']\)/);
 });
 
 test('proxies the pinned Playwright server and captures browser mutations', () => {
-  assert.match(proxy, /profiles', 'web', 'node_modules', '\.bin', 'playwright-mcp'/);
+  assert.match(proxy, /path\.join\(dshHome, 'profiles', 'web', 'node_modules', '\.bin', isWindows \? 'playwright-mcp\.cmd' : 'playwright-mcp'\)/);
   for (const action of ['browser_navigate', 'browser_click', 'browser_type', 'browser_fill_form', 'browser_tabs']) {
     assert.match(proxy, new RegExp(`'${action}'`));
   }
