@@ -206,7 +206,7 @@ window.__ModuleLoader__.load({
 		POWER_TOGGLE_HEIGHT = 22;
 		DEFAULT = {
 			version: 2,
-			enabled: false,
+			enabled: true,
 			theme: "dark",
 			mascotVisible: true,
 			mascotScale: 1,

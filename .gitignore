@@ -26,3 +26,4 @@ dist/
 .idea/
 Thumbs.db
 Desktop.ini
+profiles/web/orb-update.json

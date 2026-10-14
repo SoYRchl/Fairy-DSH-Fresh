@@ -33,7 +33,7 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
 
 export const FairyVisualSettings = z.object({
   version: z.number().step(1).default(FAIRY_VISUAL_SETTINGS_VERSION),
-  enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   theme: z.union(['dark', 'light']).default('dark'),
   mascotVisible: z.boolean().default(true),
   mascotScale: z.number().step(0.01).min(0.55).max(1).default(1),

@@ -9,3 +9,4 @@ minimumReleaseAgeExclude:
   - '@xmanrui/dsh-im@4.19.2'
 patchedDependencies:
   dsh-message-edit@0.2.3: patches/dsh-message-edit@0.2.3.patch
+  dsh-orb@0.1.6: patches/dsh-orb@0.1.6.patch

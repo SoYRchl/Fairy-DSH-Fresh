@@ -22,7 +22,16 @@
         "@deepseek-ai/dsh-web-app",
         "dsh-message-edit",
         "dsh-reasoning-effort",
-        "@xmanrui/dsh-im"
+        "@xmanrui/dsh-im",
+        "@deepseek-ai/dsh-experimental-agent-team-profile",
+        "@deepseek-ai/dsh-experimental-auto-review",
+        "@deepseek-ai/dsh-experimental-schedule-bundle",
+        "dsh-fairy-startup",
+        "dsh-browser-dock",
+        "dsh-balance-meter",
+        "dsh-fairy-visual",
+        "dsh-fairy-voice",
+        "dsh-orb"
       ]
     }
   }
