@@ -305,10 +305,16 @@ test('每个包只能有一个 lock 文件（不能 npm 与 pnpm 并存）', () 
  * `require('dsh-fairy-contracts/client-diagnostics')`，并在
  * tsdown.config.ts 里按包名打包，改名会破坏构建。所以这里记录它，
  * 并保证不再新增不一致。
+ *
+ * `profiles/web` 同理不能靠改名消除：目录名 `web` 就是 DSH 的 profile 名
+ * （`--profile web` / cordis 按目录名解析 profile），改目录名会让 profile
+ * 失效；而包名带 `dsh-` 前缀是发布域的既有约定。故按相对路径登记为例外
+ * （而非泛化的 `web`，避免将来别的 `web` 目录被误放行）。
  * ------------------------------------------------------------------ */
 const KNOWN_DIR_NAME_EXCEPTIONS = new Set([
-  // 目录名 → 包名（有意不一致，改名会破坏 browser-dock 的打包与 require）
+  // 目录名 / 相对路径 → 包名（有意不一致，改名会破坏构建或 profile 解析）
   'fairy-contracts',
+  'profiles/web',
 ]);
 
 test('包目录名应与 package.json 的 name 一致（例外已记录）', () => {
@@ -318,8 +324,13 @@ test('包目录名应与 package.json 的 name 一致（例外已记录）', () 
     if (!existsSync(pj)) return;
     const { name } = JSON.parse(read(pj));
     const base = dir.slice(ROOT.length + 1);
-    const last = base.split(/[\\/]/).pop();
-    if (last !== name && !KNOWN_DIR_NAME_EXCEPTIONS.has(last)) {
+    const baseNorm = base.split(/[\\/]/).join('/');
+    const last = baseNorm.split('/').pop();
+    if (
+      last !== name &&
+      !KNOWN_DIR_NAME_EXCEPTIONS.has(last) &&
+      !KNOWN_DIR_NAME_EXCEPTIONS.has(baseNorm)
+    ) {
       mismatches.push(`${base}  →  name: ${name}`);
     }
   };
