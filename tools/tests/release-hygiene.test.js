@@ -182,56 +182,6 @@ test('代码中的仓库 URL 必须指向本仓库（不能指向上游）', () 
 });
 
 /* ------------------------------------------------------------------ *
- * 4. 更新检查的版本比较必须能识别 -compat.N
- *
- * 事故（两次）：先是 LOCAL_VERSION 写死成过期的 '0.3.5'；
- * 改成 '0.3.8-compat.1' 后仍然失灵 —— 因为 isNewer 逐段 Number()，
- * 而 Number('compat') 是 NaN，`NaN !== NaN` 为假，判定落到"不更新"。
- * 结果：即使发布了 compat.2，界面也永远显示"已是最新"。
- * ------------------------------------------------------------------ */
-test('更新检查必须把 -compat.N 归一化后再比版本（否则永远显示"已是最新"）', () => {
-  const src = read(join(ROOT, 'fairy-visual', 'dsh-fairy-visual', 'lib', 'client.js'));
-  // 字面量形如 /^(\d+(?:\.\d+)*)(?:-compat\.(\d+))?$/i
-  assert.match(
-    src,
-    /-compat\\?\./,
-    'version 归一化正则里的 -compat. 分段不见了 —— 带 -compat.N 的 tag 会被判成"不更新"',
-  );
-  assert.match(
-    src,
-    /const\s+norm\s*=\s*\(/,
-    'norm() 归一化函数不见了 —— 见本测试注释里的 NaN 陷阱',
-  );
-  // norm 必须自己清理输入：远端 tag 可能带 v 前缀或空白污染。
-  // 若它依赖调用方已剥掉 v，遇到 " 0.3.8-compat.2" 这类输入会静默降级成错误答案。
-  const normBody = src.slice(src.indexOf('const norm = (v) => {'));
-  const head = normBody.slice(0, 500);
-  assert.match(
-    head,
-    /\.trim\(\)/,
-    'norm() 没有 trim() —— 带空白/BOM 的 tag 会走兜底分支，静默得出错误结论',
-  );
-  assert.match(
-    head,
-    /\^v/,
-    'norm() 没有自己处理 v 前缀 —— 不应依赖调用方清理输入',
-  );
-  assert.match(
-    head,
-    /isFinite/,
-    'norm() 的兜底分支没有过滤 NaN 段 —— NaN 占位会让后续版本段整体错位',
-  );
-  // 本地版本必须带 -compat.N 后缀，否则数字段与远端 tag 无法比较
-  const m = src.match(/const LOCAL_VERSION = '([^']+)'/);
-  assert.ok(m, 'LOCAL_VERSION 常量不见了');
-  assert.match(
-    m[1],
-    /-compat\.\d+$/,
-    `LOCAL_VERSION='${m[1]}' 缺少 -compat.N 后缀：远端 tag 形如 v0.3.8-compat.1，裸版本号会导致更新提示永久失灵`,
-  );
-});
-
-/* ------------------------------------------------------------------ *
  * 5. 版本号必须能被推导出来，而不是散落硬编码
  *
  * 现状缺陷：版本有 5 个来源 —— VERSION 文件、client.js 的 LOCAL_VERSION、
@@ -243,33 +193,26 @@ test('VERSION 文件存在且是裸基线版本号（不带 -compat 后缀）', 
   assert.match(v, /^\d+\.\d+\.\d+$/, `VERSION="${v}" 应为裸三段版本号（如 0.3.8）`);
 });
 
-test('LOCAL_VERSION 的基线部分必须与 VERSION 文件一致', () => {
-  const version = read(join(ROOT, 'VERSION')).trim();
-  const src = read(join(ROOT, 'fairy-visual', 'dsh-fairy-visual', 'lib', 'client.js'));
-  const m = src.match(/const LOCAL_VERSION = '([^']+)'/);
-  assert.ok(m, 'LOCAL_VERSION 常量不见了');
-  assert.ok(
-    m[1].startsWith(version),
-    `LOCAL_VERSION='${m[1]}' 与 VERSION='${version}' 基线不一致 —— 发版时漏改了其中一处`,
-  );
-});
-
 /* ------------------------------------------------------------------ *
  * 6. 更新检查引用的 API 地址必须含本仓库名
  * ------------------------------------------------------------------ */
-test('更新检查 API 指向本仓库的 releases/latest', () => {
-  const files = [
-    ['fairy-voice/dsh-fairy-voice/lib/index.js', /UPDATE_RELEASES_API\s*=\s*'([^']+)'/],
-    ['fairy-visual/dsh-fairy-visual/lib/client.js', /RELEASES_API\s*=\s*'([^']+)'/],
+/* [T-112] 反向守卫：更新检查已整条移除，任何"指向外部仓的更新检查"重新出现都要在这儿变红。
+ * 背景：原实现查的是上游 compat fork 的 releases/latest，并把「打开仓库」链到那个仓；
+ * 它既不是本仓，也没有对外发布渠道 —— 拿它比版本必然得出错误结论。 */
+test('运行时代码里不得再出现更新检查 / 外部仓地址', () => {
+  const runtime = [
+    'fairy-visual/dsh-fairy-visual/lib/client.js',
+    'fairy-voice/dsh-fairy-voice/lib/index.js',
   ];
-  for (const [rel, re] of files) {
-    const m = read(join(ROOT, rel)).match(re);
-    assert.ok(m, `${rel} 里找不到更新检查 URL`);
-    assert.ok(
-      m[1].includes(OWNER_REPO),
-      `${rel} 的更新检查 URL 不指向本仓库：${m[1]}`,
-    );
+  for (const rel of runtime) {
+    const src = read(join(ROOT, rel));
+    for (const banned of [/api\.github\.com\/repos\//, /github\.com\/playinginzzz/, /raw\.githubusercontent\.com\/playinginzzz/]) {
+      assert.ok(!banned.test(src), `${rel} 仍引用外部仓（${banned}）—— 会把使用者引到错误的版本序列`);
+    }
   }
+  // 宿主侧必须显式停用，而不是留一个能联网的默认值
+  const voice = read(join(ROOT, 'fairy-voice/dsh-fairy-voice/lib/index.js'));
+  assert.match(voice, /UPDATE_RELEASES_API\s*=\s*null/, 'UPDATE_RELEASES_API 应为 null（已停用）');
 });
 
 /* ------------------------------------------------------------------ *

@@ -7848,7 +7848,7 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
         className: 'dsh-fairy-notice',
         'data-dsh-fairy-notice': 'true',
         style: { fontSize: '11px', lineHeight: 1.6, opacity: 0.55, marginBottom: '12px' },
-        children: '当前版本 v0.3.8-compat.1 · 本包为「SoYRchl」维护的跨内核兼容版，基于「孤舟蓑笠」整理版、原始代码来自「橙汁本色」· 问题请开本仓库 Issues'
+        children: '当前版本 v0.3.8 · 内部整合分支（血缘与署名见仓库根 NOTICE / CONTRIBUTORS.md）'
       });
     }
     /* [compat patch] HDD 视觉模式改为可选：未开启时在设置面板提示。
@@ -7876,119 +7876,10 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
         children: '⚠️  HDD 视觉模式未开启（不影响朗读功能使用）'
       });
     }
-    /* [local patch 0.3.5] 检查更新：只在面板挂载时查一次，【绝不】放进每 3 秒的重算里。
-     * 两条数据来源：① 宿主启动时查过并落盘（读 /fairy-voice/update/status）；
-     * ② 缓存缺失或超过 3 小时，才由浏览器自己查 GitHub —— 浏览器走系统/梯子代理，
-     *    比宿主裸连成功率高得多；查到就回写宿主，两边共用同一份缓存。
-     * 状态会明说：检测中 / 已是最新 / 检测失败（小灰字）/ 有新版本（红字）。
-     * 只有【宿主】那侧保持完全静默（不写日志、不弹错），面板上该说的一句不少说。 */
-    function FairyUpdateNotice() {
-      const LOCAL_VERSION = '0.3.8-compat.1';
-      const REPO_RELEASES = 'https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest';
-      const REPO_HOME = 'https://github.com/SoYRchl/Fairy-DSH-Fresh';
-      const RELEASES_API = 'https://api.github.com/repos/SoYRchl/Fairy-DSH-Fresh/releases/latest';
-      const UPDATE_COMMAND = 'dsh plugin --profile web add https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download/dsh-fairy-visual.tgz https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download/dsh-fairy-voice.tgz https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download/dsh-balance-meter.tgz';
-      // phase: checking（正在查）/ latest（已是最新）/ failed（查不到）/ update（有新版本 → 红字）
-      const [phase, setPhase] = React.useState('checking');
-      const [remoteTag, setRemoteTag] = React.useState('');
-      React.useEffect(() => {
-        let alive = true;
-        const TTL_MS = 3 * 60 * 60 * 1000;
-        // 逐段比数字：1.0.10 > 1.0.9（不能按字符串比）
-        // [compat] 版本段比较：本仓库的发布 tag 形如 v0.3.8-compat.1，
-        // 而裸的 Number('compat') 是 NaN，会让 compat.2 也被判成"不大于"compat.1 ——
-        // 更新提示会永远失灵。这里先把 -compat.N 归一化成第 4 个数字段再逐段比较。
-        const isNewer = (remote, local) => {
-          const norm = (v) => {
-            // 先归一化输入自身：远端 tag 可能带 v 前缀、空白（BOM/换行污染），
-            // 由本函数统一处理后缀与空格，不依赖调用方是否干净。
-            const m = String(v).trim().replace(/^v/i, '')
-              .match(/^(\d+(?:\.\d+)*)(?:-compat\.(\d+))?$/i);
-            // 取不到就按数字段兜底，且**过滤掉 NaN 段**：否则 NaN 段会占位，
-            // 把后面的段整体错位，比较结果会静默变成错的。
-            if (!m) return String(v).split('.').map((x) => Number(x)).filter((n) => Number.isFinite(n));
-            const parts = m[1].split('.').map(Number);
-            parts.push(m[2] === undefined ? 0 : Number(m[2]));
-            return parts;
-          };
-          const a = norm(remote);
-          const b = norm(local);
-          for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
-            const na = Number(a[i] || 0);
-            const nb = Number(b[i] || 0);
-            if (na !== nb) return na > nb;
-          }
-          return false;
-        };
-        const settle = (cache) => {
-          if (!alive || !cache || typeof cache.tag !== 'string') return;
-          if (isNewer(cache.tag.replace(/^v/i, ''), LOCAL_VERSION)) {
-            setRemoteTag(cache.tag);
-            setPhase('update');
-          } else {
-            setPhase('latest');
-          }
-        };
-        (async () => {
-          let cache = null;
-          try {
-            const status = await fetch('/fairy-voice/update/status', { cache: 'no-store' });
-            if (status.ok) cache = await status.json();
-          } catch (error) { /* 旧包没这条路由，跳过，接着走浏览器自查 */ }
-          const stale = !cache || !Number.isFinite(cache.checkedAt) || Date.now() - cache.checkedAt > TTL_MS;
-          if (!stale) { settle(cache); return; }
-          try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort('timeout'), 3000);
-            const response = await fetch(RELEASES_API, { signal: controller.signal, headers: { accept: 'application/vnd.github+json' } });
-            clearTimeout(timer);
-            if (!response.ok) throw new Error('http ' + response.status);
-            const payload = await response.json();
-            if (typeof payload?.tag_name !== 'string' || !payload.tag_name) throw new Error('no-tag');
-            const fresh = { tag: payload.tag_name, checkedAt: Date.now() };
-            try {
-              await fetch('/fairy-voice/update/cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fresh) });
-            } catch (error) { /* 写不回去不影响本次显示 */ }
-            settle(fresh);
-          } catch (error) {
-            // 超时 / 连不上（多半是没挂代理）：明说一句，别让它静悄悄什么都没发生
-            if (alive) setPhase('failed');
-          }
-        })();
-        return () => { alive = false; };
-      }, []);
-      // 不是「有新版本」，就在顶部版本声明行下面留一行小灰字（不打扰）
-      if (phase !== 'update' || !remoteTag) {
-        return jsx('div', {
-          'data-dsh-fairy-update': phase,
-          // 样式跟「当前版本 v0.3.8-compat.1 · …」那行一致（同字号 11px、同透明度 0.55）。
-          // [local patch 0.3.5] 它现在排在版本行【上面】（放最顶上），所以不再用负 marginTop 去贴它。
-          style: { fontSize: '11px', lineHeight: 1.6, opacity: 0.55, marginTop: 0, marginBottom: '4px' },
-          children: phase === 'checking'
-            ? '正在检测更新……'
-            : phase === 'failed'
-              ? '检测更新失败 —— 连不上 GitHub，可能需要代理。不影响 Fairy 的使用。'
-              // [local patch 0.3.5] 「已是最新版本」做成超链接，点开就是本仓库主页
-              : jsx('a', {
-                  href: REPO_HOME, target: '_blank', rel: 'noreferrer',
-                  style: { color: 'inherit', textDecoration: 'underline' },
-                  children: '已是最新版本（v' + LOCAL_VERSION + '）· 打开仓库'
-                })
-        });
-      }
-      return jsxs('div', {
-        'data-dsh-fairy-update': 'update',
-        style: { marginBottom: '12px', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--dsw-alias-state-error-primary, #d84a3a)', background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary, #d84a3a) 12%, transparent)', color: 'var(--dsw-alias-state-error-primary, #d84a3a)', fontSize: '12px', lineHeight: 1.7, fontWeight: 700 },
-        children: [
-          '🆕 有新版本 ' + remoteTag + '（你现在是 v' + LOCAL_VERSION + '）',
-          jsxs('div', { style: { fontWeight: 400, marginTop: '4px' }, children: [
-            jsx('a', { href: REPO_RELEASES, target: '_blank', rel: 'noreferrer', style: { color: 'inherit' }, children: '点这里去下载' }),
-            '　更新命令（复制到终端跑一次，装完重启 DSH）：'
-          ] }),
-          jsx('div', { style: { fontWeight: 400, marginTop: '2px', wordBreak: 'break-all', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: '11px', userSelect: 'all' }, children: UPDATE_COMMAND })
-        ]
-      });
-    }
+    /* [T-112] 原「检查更新 / 打开仓库」组件已删除。
+     * 它写死了上游 compat fork 的 Releases 与主页，而本仓库既不是那个仓、
+     * 也没有对外发布渠道 —— 留着只会把使用者引到错误的版本序列上。
+     * 对应地，宿主侧 fairy-voice 的更新检查也已停用。 */
     // [local patch 0.2.3] 自检面板：面向完全不懂技术的使用者，每一项都给"怎么修"
     function FairyVoicePanel() {
       const [selfcheck, setSelfcheck] = React.useState({ running: true, ok: false, headline: '正在自检…', checks: [] });
@@ -8265,7 +8156,7 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
        * 为什么不放一个要手动全选的文本框：同一个面板上已经有「复制诊断信息」按钮了，
        * 按钮 + 剪贴板是这套 UI 的既有做法，文本框要用户自己选、自己复制，是退步。 */
       const copyInstallGuide = React.useCallback(() => {
-        const docUrl = 'https://raw.githubusercontent.com/SoYRchl/Fairy-DSH-Fresh/main/docs/install-moss.md';
+        const docUrl = 'docs/install-moss.md（就在本仓库根目录，直接打开这个文件）';
         const text = [
           '请帮我在这台电脑上安装 MOSS-TTS-Nano，作为 DSH 里 Fairy 朗读的第二个引擎。',
           '',
@@ -8541,11 +8432,6 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
                   onClick: copyInstallGuide,
                   children: '复制安装说明（发给你的 AI Agent）'
                 }),
-                jsx('button', {
-                  type: 'button',
-                  onClick: () => { window.open('https://github.com/SoYRchl/Fairy-DSH-Fresh/blob/main/docs/install-moss.md', '_blank'); },
-                  children: '自己看安装说明'
-                })
               ] })
             ]
           }) : null,
@@ -8830,7 +8716,7 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
 					order: 45,
 					label: () => "Fairy"
 				}, () => jsxs('div', {
-					children: [jsx(FairyUpdateNotice, {}), jsx(FairyNotice, {}), jsx(HddVisualModeNotice, {}), jsx('h3', { style: { margin: 0, paddingTop: '16px', borderTop: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.3))', fontSize: '14px' }, children: '通用' }), jsx(Settings, {
+					children: [jsx(FairyNotice, {}), jsx(HddVisualModeNotice, {}), jsx('h3', { style: { margin: 0, paddingTop: '16px', borderTop: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.3))', fontSize: '14px' }, children: '通用' }), jsx(Settings, {
 						controller,
 						identitySettings
 					}), jsx(FairyVoicePanel, {})]
