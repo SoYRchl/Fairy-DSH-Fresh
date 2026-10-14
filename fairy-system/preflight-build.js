@@ -11,31 +11,58 @@ const path = require('node:path');
 // candidates must never embed a maintainer's home directory; CI or a local
 // installation can override either path explicitly with DSH_OFFICIAL_*.
 const DEFAULT_OFFICIAL_DSH_PACKAGE = path.join(os.homedir(), '.local/lib/node_modules/@deepseek-ai/dsh/package.json');
-const DEFAULT_OFFICIAL_RUNTIME = path.join(os.homedir(), '.local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-runtime/lib/client.js');
+// ★ 2026-10-14（T-107）锚点迁移：0.1.x 的 `@deepseek-ai/dsh-client-runtime` 在
+//   0.2.0-rc.2 已被拆掉（dsh-ops §1：拆为 dsh-client-modules + dsh-client-store），
+//   旧路径必然 ENOENT。改锚定 `dsh-client-modules/lib/client.js`——它同样随内核
+//   下发、能唯一标识被评审的官方客户端运行时。
+const DEFAULT_OFFICIAL_RUNTIME = path.join(
+  os.homedir(),
+  '.local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-modules/lib/client.js',
+);
 
 const APPROVED = Object.freeze({
-  dshVersion: '0.1.1-rc.2',
-  runtimeSha256: '13a5fe0ee8cddda2306d302eb0dbfdd601e96d14baeb512867b4b6d1d72f6679',
+  dshVersion: '0.2.0-rc.2',
+  runtimeSha256: '6fa57df9f12225ea0644ed22bc149eadf7c21e5b0b43a8683c4081567b96374f',
   locks: Object.freeze({
     'dsh-message-edit': Object.freeze({
       version: '0.2.3',
       specifier: '0.2.3',
-      importerVersion: '0.2.3(patch_hash=6365b2e53f9a2f366898ef2d78648c34823df11e9bfc2a47162e6626803763cb)',
-      patchHash: '6365b2e53f9a2f366898ef2d78648c34823df11e9bfc2a47162e6626803763cb',
+      importerVersion: '0.2.3(patch_hash=48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec)',
+      patchHash: '48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec',
       packageKey: 'dsh-message-edit@0.2.3',
       patchFile: 'dsh-message-edit@0.2.3.patch',
     }),
     'dsh-reasoning-effort': Object.freeze({
-      version: '0.6.2',
-      specifier: 'github:HanaAyane/dsh-reasoning-effort#main',
-      commit: '83bc8c548749d7156a03d11d875d8117e9b5d994',
-      importerVersion: 'https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994(patch_hash=9cbcceae243982ca0241cd41471317da9112c3e61e345b3b32f205d90aec18b5)',
-      patchHash: '9cbcceae243982ca0241cd41471317da9112c3e61e345b3b32f205d90aec18b5',
-      packageKey: 'dsh-reasoning-effort@https://codeload.github.com/HanaAyane/dsh-reasoning-effort/tar.gz/83bc8c548749d7156a03d11d875d8117e9b5d994',
-      patchFile: 'dsh-reasoning-effort@0.6.2.patch',
+      version: '0.8.1',
+      // 2026-10-14（T-107）：本仓已把 0.6.2 的浮动 `#main` 改成 0.8.1 的定 commit，
+      // 且**不再打 patch**（0.8.1 自带 rc.2 适配）⇒ patchHash / patchFile 均不设，
+      // 校验时见 patchFile 缺失即只验锁定身份与 commit。
+      specifier: 'github:HanaAyane/dsh-reasoning-effort#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad',
+      commit: 'a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad',
+      importerVersion: 'git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad',
+      packageKey: 'dsh-reasoning-effort@git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad',
     }),
   }),
 });
+
+// 仅测试 / CI 可用的替换入口：把一份 JSON 当作 APPROVED 用。
+// 默认**不设**，线上闸门永远是上面那份硬编码 pin；这条只是为了让契约测试能在
+// 任意机器（没有本机 ~/.local 下的官方运行时）上跑起来，不必伪造哈希。
+function loadApprovedOverride() {
+  const file = process.env.DSH_PREFLIGHT_APPROVED_FILE;
+  if (!file) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    fail({
+      scope: 'approved_override',
+      file,
+      expected: 'valid JSON approved pin',
+      actual: error.code || error.message,
+      action: 'Point DSH_PREFLIGHT_APPROVED_FILE at a readable JSON pin, or unset it to use the built-in pin.',
+    });
+  }
+}
 
 const EXCLUDED_DIRECTORY_NAMES = new Set([
   'node_modules',
@@ -248,7 +275,7 @@ function createDefaultConfig(overrides = {}) {
     yamlAnchor: path.resolve(overrides.yamlAnchor || process.env.DSH_YAML_ANCHOR || DEFAULT_OFFICIAL_DSH_PACKAGE),
     yamlModule: overrides.yamlModule,
     packageDefinitions: packageDefinitions.map((definition) => ({ ...definition, directory: path.resolve(definition.directory) })),
-    approved: overrides.approved || APPROVED,
+    approved: overrides.approved || loadApprovedOverride() || APPROVED,
   };
 }
 
@@ -576,7 +603,9 @@ function verifyPinnedDependencies(config, profile) {
       });
     }
     const patchKey = `${name}@${pin.version}`;
-    if (patchedDependencies[patchKey] !== pin.patchHash) {
+    // patch 是可选的：0.8.1 的 reasoning-effort 自带 rc.2 适配，本仓不再打补丁。
+    // 只有 pin 里声明了 patchHash 才校验锁文件条目与补丁文件。
+    if (pin.patchHash && patchedDependencies[patchKey] !== pin.patchHash) {
       fail({
         scope: 'lock_patch_hash',
         packageName: name,
@@ -606,24 +635,32 @@ function verifyPinnedDependencies(config, profile) {
         action: 'Correct the approved preflight pin manually only after reviewing the intended locked commit.',
       });
     }
-    const patchFile = path.join(config.profileRoot, 'patches', pin.patchFile);
-    requireRegularFile(patchFile, {
-      scope: 'patch_file',
-      packageName: name,
-      action: 'Inspect and restore the approved patch file manually before launching DSH.',
-    });
-    const actualPatchHash = hashFile(patchFile, 'sha256');
-    if (actualPatchHash !== pin.patchHash) {
-      fail({
-        scope: 'patch_file_hash',
+    if (pin.patchFile) {
+      const patchFile = path.join(config.profileRoot, 'patches', pin.patchFile);
+      requireRegularFile(patchFile, {
+        scope: 'patch_file',
         packageName: name,
-        file: patchFile,
-        expected: pin.patchHash,
-        actual: actualPatchHash,
-        action: 'Review the patch drift and restore the approved patch manually; preflight will not overwrite it.',
+        action: 'Inspect and restore the approved patch file manually before launching DSH.',
       });
+      const actualPatchHash = hashFile(patchFile, 'sha256');
+      if (actualPatchHash !== pin.patchHash) {
+        fail({
+          scope: 'patch_file_hash',
+          packageName: name,
+          file: patchFile,
+          expected: pin.patchHash,
+          actual: actualPatchHash,
+          action: 'Review the patch drift and restore the approved patch manually; preflight will not overwrite it.',
+        });
+      }
     }
-    results.push({ name, specifier: pin.specifier, version: pin.importerVersion, patchHash: pin.patchHash, ...(pin.commit ? { commit: pin.commit } : {}) });
+    results.push({
+      name,
+      specifier: pin.specifier,
+      version: pin.importerVersion,
+      ...(pin.patchHash ? { patchHash: pin.patchHash } : {}),
+      ...(pin.commit ? { commit: pin.commit } : {}),
+    });
   }
   return results;
 }

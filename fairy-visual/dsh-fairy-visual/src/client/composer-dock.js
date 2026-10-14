@@ -24,6 +24,7 @@ const {
 const { createInsetSynchronizer } = require('./composer-inset-synchronizer.js');
 const { createChatContentAnchor } = require('./chat-content-anchor.js');
 const { createToBottomPositioner } = require('./to-bottom-positioner.js');
+const { captureScrollPositions, restoreScrollPositions } = require('./scroll-position-guard.js');
 const { createComposerSessionResolver } = require('./composer-session-rebinding.js');
 const { createResizeController, HEIGHT_MIN, HEIGHT_MAX, CONTENT_MIN } = require('./composer-resize-controller.js');
 const { setControllerSetting, settingError } = require('./settings-write.js');
@@ -426,6 +427,7 @@ function mountComposerDock(controller) {
       contentAnchor.clear();
       return;
     }
+    const scrollPositionSnapshot = currentConversation === conversation ? captureScrollPositions(conversationScrolls(currentConversation)) : null;
     if (currentConversation !== conversation || currentSeat !== seat) {
       restoreSeat();
       conversation = currentConversation;
@@ -488,6 +490,7 @@ function mountComposerDock(controller) {
     insetSynchronizer.flush();
     contentAnchor.flush();
     toBottomPositioner.flush();
+    restoreScrollPositions(scrollPositionSnapshot);
     updateHandle();
   }
 

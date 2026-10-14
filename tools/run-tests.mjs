@@ -58,6 +58,11 @@ function collectSuites() {
     'balance-meter/dsh-balance-meter',
     'browser-dock/dsh-browser-dock',
     'fairy-startup/dsh-fairy-startup',
+    // ★ 2026-10-14（T-107）补入：这 6 个文件此前**完全没被任何 CI 跑到**，
+    //   实测已有 23 项失败（accepted-baseline 2 / preflight 6 / upgrade 7 等）
+    //   在无人知晓的情况下长期为红。收进来的目的就是让这类债以后藏不住。
+    'fairy-system',
+    'fairy-compat',
   ];
   for (const rel of pkgs) {
     const dir = join(ROOT, rel);

@@ -1,0 +1,6 @@
+# dsh-fairy-compat 目前**不是**一个要挂进 profile 的 bundle：
+# 它只提供"代际探测 + 降级 + 选择器事实源"这三件事，插件直接 import 即可。
+# package.json 里声明了 dsh.bundle.patch，所以这里必须有一个合法的空 patch，
+# 否则将来有人把它加进 dsh.profile.bundles 时会因为文件缺失而报
+# `failed to read overlay`（dsh-ops §3.7 的经典故障）。
+[]

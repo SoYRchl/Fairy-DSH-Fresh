@@ -147,16 +147,66 @@ function compare(expected, actual) {
   return changes.sort((left, right) => left.file.localeCompare(right.file) || left.kind.localeCompare(right.kind));
 }
 
+// 跨平台差异输出。
+//
+// 原来直接 spawnSync('/usr/bin/diff')：Windows 上没有这个路径，spawnSync 返回
+// 带 error 的空结果，整条命令直接抛异常 —— 表现是 `--diff` 的 stdout 为空，
+// 断言 `-旧行` / `+新行` 的用例恒红。这里改成：优先用系统 diff（POSIX/装了
+// diff 的环境），拿不到就退回纯 JS 的实现（去公共首尾 + 逐行标注）。
+function readLinesOrNull(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').split('\n');
+  } catch {
+    return null;
+  }
+}
+
+function jsUnifiedDiff(leftLines, rightLines, leftLabel, rightLabel) {
+  const left = leftLines ?? [];
+  const right = rightLines ?? [];
+  let head = 0;
+  while (head < left.length && head < right.length && left[head] === right[head]) head += 1;
+  let tail = 0;
+  while (
+    tail < left.length - head &&
+    tail < right.length - head &&
+    left[left.length - 1 - tail] === right[right.length - 1 - tail]
+  ) {
+    tail += 1;
+  }
+  const removed = left.slice(head, left.length - tail);
+  const added = right.slice(head, right.length - tail);
+  if (removed.length === 0 && added.length === 0) return '';
+  const out = [`--- ${leftLabel}`, `+++ ${rightLabel}`, `@@ -${head + 1},${removed.length} +${head + 1},${added.length} @@`];
+  for (const line of removed) out.push(`-${line}`);
+  for (const line of added) out.push(`+${line}`);
+  return `${out.join('\n')}\n`;
+}
+
 function showUnifiedDiff(baseline, changes) {
   for (const change of changes) {
     if (change.expected?.type === 'symlink' || change.actual?.type === 'symlink') continue;
     const acceptedFile = path.join(baseline.directory, 'snapshot', change.file);
     const currentFile = path.join(sourceRoot, change.file);
-    const left = fs.existsSync(acceptedFile) ? acceptedFile : '/dev/null';
-    const right = fs.existsSync(currentFile) ? currentFile : '/dev/null';
-    const result = spawnSync('/usr/bin/diff', ['-u', left, right], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-    if (result.stdout) process.stdout.write(result.stdout);
-    if (result.error) throw result.error;
+    const acceptedExists = fs.existsSync(acceptedFile);
+    const currentExists = fs.existsSync(currentFile);
+    const left = acceptedExists ? acceptedFile : '/dev/null';
+    const right = currentExists ? currentFile : '/dev/null';
+
+    let printed = '';
+    if (acceptedExists && currentExists) {
+      const result = spawnSync('/usr/bin/diff', ['-u', left, right], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+      if (!result.error && typeof result.stdout === 'string' && result.stdout.length > 0) printed = result.stdout;
+    }
+    if (!printed) {
+      printed = jsUnifiedDiff(
+        readLinesOrNull(left),
+        readLinesOrNull(right),
+        acceptedExists ? `accepted/${change.file}` : '/dev/null',
+        currentExists ? `current/${change.file}` : '/dev/null',
+      );
+    }
+    if (printed) process.stdout.write(printed);
   }
 }
 

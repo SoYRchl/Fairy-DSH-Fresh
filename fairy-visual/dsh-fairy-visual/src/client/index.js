@@ -20,6 +20,7 @@ const { claimMascotLifecycle } = require('./mascot-lifecycle.js');
 const { claimBrandSidebarGeometry } = require('./brand-sidebar-geometry.js');
 const { claimPowerModeGeometry } = require('./power-mode.js');
 const { createSelectionGuard } = require('./selection-guard.js');
+const { createDecisionPointerGuard } = require('./decision-pointer-guard.js');
 const { scheduleMascotScale, MASCOT_GEOMETRY_EVENT } = require('./mascot-scale-control.js');
 const { saveControllerSetting } = require('./settings-write.js');
 const { mutationTouchesSurface } = require('./surface-utils.js');
@@ -843,6 +844,8 @@ function apply(ctx) {
         ].join(','),
       });
       ctx.effect(() => () => selectionGuard.dispose(), 'dsh-fairy-visual selection guard');
+      const decisionGuard = createDecisionPointerGuard();
+      ctx.effect(() => () => decisionGuard.dispose(), 'dsh-fairy-visual decision pointer guard');
       const controller = new Controller(settings, ctx.sessions);
       if (typeof window !== 'undefined' && typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
         window.__fairyVisualLifecycle = {

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const packageRoot = new URL('..', import.meta.url);
@@ -11,9 +12,28 @@ const adapterSource = readFileSync(new URL('../src/client/dom-adapter.js', impor
 const require = createRequire(import.meta.url);
 const clientDomContracts = require('../../../fairy-contracts/client-dom.cjs');
 
+/*
+ * 夹具要模拟"并集选择器"契约。
+ *
+ * dom-adapter 的官方选择器跨代并存（例如会话容器同时接受 0.1.x 的
+ * `[data-slot="conversation"]` 与 0.2.x 的 `[data-slot="main.conversation"]`），
+ * 因此在真实浏览器里传进去的是一个以逗号分隔的并集字符串。
+ * 上游的假 DOM 只按整串精确查表，并集串必然查不到 → 整个 capability 诊断被
+ * 误判成"应用还没挂载"而提前返回。这里按契约把并集拆开逐个匹配。
+ */
+function queryAll(node, selector) {
+  return String(selector)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => node.entries[part])
+    .find((hit) => hit != null) ?? null;
+}
+
 function node(entries = {}) {
   return {
-    querySelector(selector) { return entries[selector] ?? null; },
+    entries,
+    querySelector(selector) { return queryAll(this, selector); },
     querySelectorAll() { return []; },
   };
 }
@@ -113,9 +133,12 @@ test('records and reports missing required capabilities after an explicit diagno
 
 test('keeps official data-slot and data-phase queries inside dom-adapter', () => {
   const directOfficialQuery = /querySelector(?:All)?\([^\n]*(?:data-slot|data-phase|data-composer|data-conversation-scroll|data-input-scroll|data-chat-flow)/;
+  // ★ 不要用 URL.pathname 拼路径：在 Windows 上它给出 `/E:/...`，再经 path.join
+  //   会被拼成 `E:\E:\...`（曾经把这条测试误判成上游平台 bug）。必须用 fileURLToPath。
+  const clientDir = fileURLToPath(sourceRoot);
   const files = readdirSync(sourceRoot, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.js') && entry.name !== 'dom-adapter.js')
-    .map((entry) => join(sourceRoot.pathname, entry.name));
+    .map((entry) => join(clientDir, entry.name));
 
   const offenders = files.filter((file) => directOfficialQuery.test(readFileSync(file, 'utf8')));
   assert.deepEqual(offenders, []);

@@ -10,6 +10,16 @@
  * vendor/ …）。所以它们从兼容工作开始的那一刻就失效了 —— 只是因为**此前没有
  * 任何 CI**，一直没人发现。
  *
+ * 2026-10-14（T-107）补充：`fairy-system/test/` 的 6 个文件同样从未进过任何 CI
+ * （`run-tests.mjs` 的包清单里没有 `fairy-system`），实测 23 项失败。现已把该目录
+ * 纳入收集范围，并**当场修掉大部分**：
+ *   · accepted-baseline.test.js —— 2 项：`new URL().pathname` 在 Windows 上的盘符
+ *     拼接 bug + `--diff` 依赖 `/usr/bin/diff`（Windows 没有）→ 已修，现全绿。
+ *   · preflight.test.js —— 6 项：夹具依赖**本机** `~/.local/.../dsh` + 相对符号链接
+ *     在 Windows 上静默失效 → 已改为夹具自带官方 dsh / 绝对 junction，现全绿。
+ *   · upgrade.test.js —— 7 项：见下方独立条目。
+ * 只有 upgrade.test.js 仍留在名单里。
+ *
  * 处理原则（重要）
  * ----------------
  * 1. **不删除、不静默跳过。** 静默跳过等于把信号藏起来；这份名单本身就是
@@ -64,12 +74,22 @@ export const KNOWN_STALE = new Map([
         '而不是断言某段字面代码。注意：tools/tests/compat-patches.test.js 已经这样做了。',
     },
   ],
+  // ---------- fairy-system ----------
   [
-    'fairy-visual/dsh-fairy-visual/test/capability.test.js',
+    'fairy-system/test/upgrade.test.js',
     {
-      reason: '断言上游 capability 上报形态',
-      detail: '兼容改动新增了 HDD 视觉可选等能力项，原有的 capability 断言与之一致性已变。',
-      fix: '按当前 capability 集合更新断言（新增项应有对应断言）。',
+      reason: '整套断言 0.1.1-rc.2 时代 + 依赖本机现役 B 线 home，无法在 CI/整合仓成立',
+      detail:
+        '(a) 夹具直接取 `homedir()/.dsh/profiles/web` 的 node_modules 建链接 —— 本机 `~/.dsh` ' +
+        '是 A 官方桌面端的 home（desktop profile），不是 B 线的（B 线 home 在别处），必然 ENOENT；' +
+        '(b) 硬编码 `dsh-client-runtime/lib/client.js` 与哈希 `13a5fe0e…`，而 0.2.0-rc.2 已把 ' +
+        'dsh-client-runtime 拆掉（改成 dsh-client-modules + dsh-client-store）；' +
+        '(c) 断言 `@deepseek-ai/dsh-settings 0.1.1-rc.2`、`dsh-reasoning-effort: 0.6.2`、' +
+        '`MutableChatNodeStore` 等已作废的取值 —— 本仓已迁到 0.8.1 / rc.2。',
+      fix:
+        '把"取现役 home"改成显式参数（env 或 argv，默认指向本仓 profiles/web），' +
+        '再把断言里的版本/哈希/包名换成 rc.2 现状。注意这是一次**语义级重写**（等于给 ' +
+        'upgrade-preflight.js 做 rc.2 复评），不要只为让它变绿而放宽断言。',
     },
   ],
 

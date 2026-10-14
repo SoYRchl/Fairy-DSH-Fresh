@@ -315,6 +315,9 @@ const KNOWN_DIR_NAME_EXCEPTIONS = new Set([
   // 目录名 / 相对路径 → 包名（有意不一致，改名会破坏构建或 profile 解析）
   'fairy-contracts',
   'profiles/web',
+  // fairy-compat 与 fairy-contracts 同理：顶层单层目录（不是 <组>/<包> 两层），
+  // 目录名去掉 dsh- 前缀就是包名。它是兼容层骨架，不随插件组发布。
+  'fairy-compat',
 ]);
 
 test('包目录名应与 package.json 的 name 一致（例外已记录）', () => {

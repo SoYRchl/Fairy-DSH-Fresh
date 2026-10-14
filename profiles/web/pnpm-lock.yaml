@@ -38,6 +38,9 @@ importers:
       dsh-message-edit:
         specifier: 0.2.3
         version: 0.2.3(patch_hash=48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec)
+      dsh-orb:
+        specifier: 0.1.6
+        version: 0.1.6(@deepseek-ai/schemastery@3.18.4)
       dsh-reasoning-effort:
         specifier: github:HanaAyane/dsh-reasoning-effort#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad
         version: git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad
@@ -253,6 +256,27 @@ packages:
 
   dsh-message-edit@0.2.3:
     resolution: {integrity: sha512-qib/j8/lMdl1GOf2TCAfFlQzXtE3tJx949/T9CP9V7OEyLP+iAcomIv6FbRAUoWiwufNJ4f5unspyO5Oe7cXqA==}
+
+  dsh-orb@0.1.6:
+    resolution: {integrity: sha512-K/jWIZ7aMKw2t1Zn4nIE46lkFHxzq/u9T3QV3rsRi3uOs0ml1hfeWVsax3DuOvahgfDveX1g3zCtToEvOQu8Mg==}
+    peerDependencies:
+      '@deepseek-ai/cordis': 4.0.4
+      '@deepseek-ai/dsh-agent': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-api-session-controller': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-attachment': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-brand': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-home-paths': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-llm': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-session': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-session-projection': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-system-prompt': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-tools': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-user-approval': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/dsh-user-questions': '>=0.1.7-rc.2 <0.3.0-0'
+      '@deepseek-ai/schemastery': 3.18.4
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-session-projection':
+        optional: true
 
   dsh-reasoning-effort@git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad:
     resolution: {commit: a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad, repo: git@github.com:HanaAyane/dsh-reasoning-effort.git, type: git}
@@ -882,6 +906,10 @@ snapshots:
       - utf-8-validate
 
   dsh-message-edit@0.2.3(patch_hash=48aa0b78c2890276d29446c56e3a3cfaefd8f2ee7723b4a0206a5d35eec862ec): {}
+
+  dsh-orb@0.1.6(@deepseek-ai/schemastery@3.18.4):
+    dependencies:
+      '@deepseek-ai/schemastery': 3.18.4
 
   dsh-reasoning-effort@git+ssh://git@github.com/HanaAyane/dsh-reasoning-effort.git#a94d646f61eb3c0966c833ee8f5ad62f8e1b5bad:
     dependencies:

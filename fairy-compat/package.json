@@ -1,0 +1,23 @@
+{
+  "name": "dsh-fairy-compat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fairy 兼容层：内核代际特征探测 + 降级，所有插件经它触达内核易变面。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

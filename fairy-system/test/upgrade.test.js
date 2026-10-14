@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-const script = new URL('../upgrade-preflight.js', import.meta.url);
+const scriptPath = fileURLToPath(new URL('../upgrade-preflight.js', import.meta.url));
 const dshHome = join(homedir(), '.dsh');
 const currentProfile = join(dshHome, 'profiles', 'web');
 const currentRuntime = join(homedir(), '.local', 'lib', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-client-runtime', 'lib', 'client.js');
@@ -15,11 +16,11 @@ const expectedHash = '13a5fe0ee8cddda2306d302eb0dbfdd601e96d14baeb512867b4b6d1d7
 const expectedVersion = '0.1.1-rc.2';
 
 function run(args, env = {}) {
-  return spawnSync(process.execPath, [script.pathname, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+  return spawnSync(process.execPath, [scriptPath, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
 }
 
 function createIsolatedFixture() {
-  const rootDir = mkdtempSync(join('/tmp', 'dsh-upgrade-preflight-'));
+  const rootDir = mkdtempSync(join(tmpdir(), 'dsh-upgrade-preflight-'));
   const profile = join(rootDir, 'profile');
   const nodeModules = join(profile, 'node_modules');
   const runtime = join(rootDir, 'runtime', 'lib', 'client.js');

@@ -2435,6 +2435,32 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 	}));
 
 //#endregion
+//#region src/client/scroll-position-guard.js
+	var require_scroll_position_guard = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+		const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+		const BOTTOM_EPSILON = 24;
+		function captureScrollPositions(nodes) {
+			const snapshots = /* @__PURE__ */ new Map();
+			(nodes || []).forEach((node) => {
+				if (!node || typeof node.scrollTop !== "number") return;
+				const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
+				const distanceFromBottom = Math.max(0, maxScrollTop - node.scrollTop);
+				snapshots.set(node, { scrollTop: node.scrollTop, distanceFromBottom, atBottom: distanceFromBottom <= BOTTOM_EPSILON });
+			});
+			return snapshots;
+		}
+		function restoreScrollPositions(snapshots) {
+			snapshots?.forEach(({ scrollTop, atBottom }, node) => {
+				if (!node?.isConnected) return;
+				const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
+				const nextScrollTop = atBottom ? maxScrollTop : clamp(scrollTop, 0, maxScrollTop);
+				if (Math.abs(node.scrollTop - nextScrollTop) > 0.5) node.scrollTop = nextScrollTop;
+			});
+		}
+		module.exports = { captureScrollPositions, restoreScrollPositions };
+	}));
+//#endregion
+
 //#region src/client/composer-session-rebinding.js
 	var require_composer_session_rebinding = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		const { conversation, composerSeat, composerCard, anyPhase, conversationScrolls } = require_dom_adapter();
@@ -3146,6 +3172,7 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 		const { createInsetSynchronizer } = require_composer_inset_synchronizer();
 		const { createChatContentAnchor } = require_chat_content_anchor();
 		const { createToBottomPositioner } = require_to_bottom_positioner();
+		const { captureScrollPositions, restoreScrollPositions } = require_scroll_position_guard();
 		const { createComposerSessionResolver } = require_composer_session_rebinding();
 		const { createResizeController, HEIGHT_MIN, HEIGHT_MAX, CONTENT_MIN } = require_composer_resize_controller();
 		const { setControllerSetting, settingError } = require_settings_write();
@@ -3468,6 +3495,7 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 					contentAnchor.clear();
 					return;
 				}
+				const scrollPositionSnapshot = currentConversation === conversation ? captureScrollPositions(conversationScrolls(currentConversation)) : null;
 				if (currentConversation !== conversation || currentSeat !== seat) {
 					restoreSeat();
 					conversation = currentConversation;
@@ -3536,6 +3564,7 @@ html[data-dsh-fairy-visual],html[data-dsh-fairy-visual] body{color-scheme:dark}h
 				insetSynchronizer.flush();
 				contentAnchor.flush();
 				toBottomPositioner.flush();
+				restoreScrollPositions(scrollPositionSnapshot);
 				updateHandle();
 			}
 			function bind() {
@@ -6295,6 +6324,56 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
 	}));
 
 //#endregion
+//#region src/client/decision-pointer-guard.js
+	var require_decision_pointer_guard = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+		// Retain a deliberate mouse click across a layout shift. No synthetic click,
+		// no pointerdown answer, and no change to the host's exactly-once/disabled logic.
+		function createDecisionPointerGuard({ documentRef = document, windowRef = window } = {}) {
+			let press = null;
+			const release = () => {
+				if (!press) return;
+				const { button, id } = press;
+				press = null;
+				try { if (button.hasPointerCapture(id)) button.releasePointerCapture(id); } catch (_) {}
+			};
+			const down = (event) => {
+				release();
+				if (event.defaultPrevented || event.button !== 0 || event.pointerType !== "mouse" || !event.isPrimary) return;
+				const button = event.target?.closest?.("[data-approval-key] button, [data-question-key] button, [data-plan-review-key] button");
+				if (!button || button.disabled || button.getAttribute("aria-disabled") === "true") return;
+				try {
+					button.setPointerCapture(event.pointerId);
+					press = { button, id: event.pointerId, x: event.clientX, y: event.clientY };
+				} catch (_) {}
+			};
+			const move = (event) => {
+				if (!press || event.pointerId !== press.id) return;
+				if (!press.button.isConnected || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) release();
+			};
+			const up = (event) => { if (!press || event.pointerId !== press.id) return; press = null; };
+			const hidden = () => { if (documentRef.hidden) release(); };
+			documentRef.addEventListener("pointerdown", down, true);
+			documentRef.addEventListener("pointermove", move, true);
+			documentRef.addEventListener("pointerup", up, true);
+			documentRef.addEventListener("pointercancel", release, true);
+			documentRef.addEventListener("visibilitychange", hidden);
+			windowRef.addEventListener("blur", release);
+			windowRef.addEventListener("pagehide", release);
+			return { dispose() {
+				release();
+				documentRef.removeEventListener("pointerdown", down, true);
+				documentRef.removeEventListener("pointermove", move, true);
+				documentRef.removeEventListener("pointerup", up, true);
+				documentRef.removeEventListener("pointercancel", release, true);
+				documentRef.removeEventListener("visibilitychange", hidden);
+				windowRef.removeEventListener("blur", release);
+				windowRef.removeEventListener("pagehide", release);
+			} };
+		}
+		module.exports = { createDecisionPointerGuard };
+	}));
+//#endregion
+
 //#region src/client/settings-normalizer.cjs
 	var require_settings_normalizer = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		const SETTINGS_VERSION = 2;
@@ -6901,6 +6980,7 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
 		const { claimBrandSidebarGeometry } = require_brand_sidebar_geometry();
 		const { claimPowerModeGeometry } = require_power_mode();
 		const { createSelectionGuard } = require_selection_guard();
+		const { createDecisionPointerGuard } = require_decision_pointer_guard();
 		const { scheduleMascotScale, MASCOT_GEOMETRY_EVENT } = require_mascot_scale_control();
 		const { saveControllerSetting } = require_settings_write();
 		const { mutationTouchesSurface } = require_surface_utils();
@@ -7848,6 +7928,8 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
 					".dsh-history-overlay-scrollbar-thumb"
 				].join(",") });
 				ctx.effect(() => () => selectionGuard.dispose(), "dsh-fairy-visual selection guard");
+				const decisionGuard = createDecisionPointerGuard();
+				ctx.effect(() => () => decisionGuard.dispose(), "dsh-fairy-visual decision pointer guard");
 				const controller = new Controller(settings, ctx.sessions);
 				if (typeof window !== "undefined" && typeof process !== "undefined" && true) window.__fairyVisualLifecycle = { inspectController: () => controller.lifecycle?.inspect?.() || [] };
 				ctx.effect(() => () => controller.dispose(), "dsh-fairy-visual controller");

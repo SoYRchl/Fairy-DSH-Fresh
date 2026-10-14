@@ -4,6 +4,7 @@ packages:
 nodeLinker: hoisted
 autoInstallPeers: false
 minimumReleaseAgeExclude:
+  - dsh-orb
   - dsh-message-edit@0.2.3
   - '@xmanrui/dsh-im@4.19.2'
 patchedDependencies:
