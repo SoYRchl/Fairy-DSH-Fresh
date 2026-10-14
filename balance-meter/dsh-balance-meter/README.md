@@ -22,6 +22,30 @@ bare `unavailable` token: `未配置` (no key in the credentials file), `密钥�
 also logs `balance.fetch` with the HTTP status, so a non-2xx reply is
 attributable from `DSH_FAIRY_LOG`.
 
+Usage events are priced by their message source. Official DeepSeek models
+(`deepseek-*` model ids or a provider id containing `deepseek`) use the
+built-in V4 Flash schedule. Any other model is counted in tokens but
+skipped in money, and the daily estimate is flagged incomplete (rendered
+as `¥x.xx*` with a note in the card). To price third-party models, list
+them in the bundle config — `balancePricing.models`, USD per million
+tokens, exact model match; `cacheRead`/`cacheWrite` default to `input`,
+and rows missing `model`, `input`, or `output` are dropped:
+
+~~~yaml
+- insert:
+    - id: balance-meter
+      name: 'dsh-balance-meter'
+      inject: [clientModules]
+      config:
+        balancePricing:
+          models:
+            - model: 'mimo-v2.6-flash-free'
+              input: 0
+              output: 0
+              cacheRead: 0
+              cacheWrite: 0
+~~~
+
 The visible daily row preserves the native wording `今日token` in normal mode
 and uses `今日电量` only while the published visual snapshot
 `data-dsh-fairy-mode="hdd"` is active. The component observes that read-only

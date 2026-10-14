@@ -1,7 +1,22 @@
 # dsh-balance-meter bundle patch: one row over the target profile.
 # The row name resolves from the profile's own node_modules where
 # dsh plugin --profile <name> add <path> installed this package.
+#
+# Optional per-model pricing (`balancePricing.models`, USD per million
+# tokens, exact model match). Any usage whose message source model equals
+# `model` is priced with these values instead of being left unpriced.
+# `cacheRead`/`cacheWrite` default to `input` when omitted; rows missing
+# `model`, `input`, or `output` are dropped. Official DeepSeek models are
+# priced with the built-in V4 Flash schedule regardless of this list.
 - insert:
     - id: balance-meter
       name: 'dsh-balance-meter'
       inject: [clientModules]
+      config:
+        balancePricing:
+          models: []
+          # - model: 'mimo-v2.6-flash-free'
+          #   input: 0
+          #   output: 0
+          #   cacheRead: 0
+          #   cacheWrite: 0

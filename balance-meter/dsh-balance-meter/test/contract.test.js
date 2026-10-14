@@ -110,6 +110,12 @@ test('keeps balance credentials server-only and renders remote failures as unava
   assert.match(client, /计价源 DeepSeek V4 Flash 官方价/);
   assert.match(server, /PRICING_VERIFIED_DATE = '2026-08-26'/);
   assert.match(server, /PRICING_SOURCE_URL = 'https:\/\/api-docs\.deepseek\.com\/quick_start\/pricing\/'/);
+  assert.match(server, /apply\(ctx, config\)/);
+  assert.match(server, /function classifyUsageSource\(source, customPricing\)/);
+  assert.match(server, /event\.data\.message\?\.source/);
+  assert.match(server, /todayEstimateComplete = false/);
+  assert.match(client, /estimateComplete === false/);
+  assert.match(client, /今日含未定价模型/);
   assert.equal((client.match(/id: 'balance-meter'/g) || []).length, 1);
 });
 
@@ -250,9 +256,12 @@ test('normalizes malformed usage before persisting and serving the daily total',
     assert.equal(subscriptions, 1);
     assert.equal(injections, 1);
     assert.equal(routeRegistrations, 1);
-    eventHandler({}, { type: 'assistant/message', time: Date.UTC(2026, 7, 26, 2), data: { usage: {
-      inputTokens: '10.9', outputTokens: -7, cacheReadTokens: Number.POSITIVE_INFINITY, cacheWriteTokens: 3.8,
-    } } });
+    eventHandler({}, { type: 'assistant/message', time: Date.UTC(2026, 7, 26, 2), data: {
+      message: { source: { provider: 'deepseek', model: 'deepseek-v4-flash' } },
+      usage: {
+        inputTokens: '10.9', outputTokens: -7, cacheReadTokens: Number.POSITIVE_INFINITY, cacheWriteTokens: 3.8,
+      },
+    } });
     const persisted = JSON.parse(await readFileFs(join(directory, 'balance-meter-daily.json'), 'utf8'));
     assert.deepEqual({
       inputTokens: persisted.inputTokens,
@@ -281,4 +290,96 @@ test('normalizes malformed usage before persisting and serving the daily total',
     else process.env.DSH_HOME = originalHome;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('skips money for unpriced models and honors bundle-config custom pricing', async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const makeHome = async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'balance-meter-pricing-'));
+    const originalHome = process.env.DSH_HOME;
+    process.env.DSH_HOME = directory;
+    return {
+      async dispose() {
+        if (originalHome === undefined) delete process.env.DSH_HOME;
+        else process.env.DSH_HOME = originalHome;
+        await rm(directory, { recursive: true, force: true });
+      },
+    };
+  };
+  const makeCtx = (cleanups, handlers) => ({
+    effect(factory) { const cleanup = factory(); if (cleanup) cleanups.push(cleanup); },
+    on(name, listener) { if (name === 'session/event') handlers.eventHandler = listener; return () => {}; },
+    inject(_deps, callback) {
+      callback({
+        effect(factory) { const cleanup = factory(); if (cleanup) cleanups.push(cleanup); },
+        webServer: { register(route) { handlers.routeHandler = route.handler; return () => {}; } },
+      });
+    },
+  });
+  const serve = async (routeHandler) => {
+    let payload = '';
+    await routeHandler({}, {
+      writableEnded: false, destroyed: false, setHeader() {},
+      end(value) { payload = String(value); this.writableEnded = true; },
+    });
+    return JSON.parse(payload);
+  };
+  const emit = (handler, provider, model, usage) => handler({}, {
+    type: 'assistant/message', time: Date.UTC(2026, 7, 26, 2),
+    data: { message: { source: { provider, model } }, usage },
+  });
+  const officialUsage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
+
+  // ① official model keeps the built-in schedule.
+  let home = await makeHome();
+  try {
+    const runtime = await import(new URL(`../lib/index.js?pricing-official=${Date.now()}`, import.meta.url));
+    const cleanups = [];
+    const handlers = {};
+    runtime.apply(makeCtx(cleanups, handlers));
+    emit(handlers.eventHandler, 'deepseek', 'deepseek-v4-flash', officialUsage);
+    const served = await serve(handlers.routeHandler);
+    assert.ok(served.todayCost > 0);
+    assert.equal(served.pricing.estimateComplete, true);
+  } finally { await home.dispose(); }
+
+  // ② unpriced non-official model (no bundle config): tokens only, money skipped.
+  home = await makeHome();
+  try {
+    const runtime = await import(new URL(`../lib/index.js?pricing-unpriced=${Date.now()}`, import.meta.url));
+    const cleanups = [];
+    const handlers = {};
+    runtime.apply(makeCtx(cleanups, handlers));
+    emit(handlers.eventHandler, 'kilo', 'mimo-v2.6-flash-free', officialUsage);
+    const served = await serve(handlers.routeHandler);
+    assert.equal(served.todayTokens, 2_000_000);
+    assert.equal(served.todayCost, 0);
+    assert.equal(served.pricing.estimateComplete, false);
+  } finally { await home.dispose(); }
+
+  // ③ bundle-config custom pricing: exact match wins; malformed rows are dropped.
+  home = await makeHome();
+  try {
+    const runtime = await import(new URL(`../lib/index.js?pricing-custom=${Date.now()}`, import.meta.url));
+    const cleanups = [];
+    const handlers = {};
+    runtime.apply(makeCtx(cleanups, handlers), {
+      balancePricing: {
+        models: [
+          { model: 'mimo-v2.6-flash-free', input: 1, output: 2 },
+          { model: '', input: 9, output: 9 },
+          { model: 'broken', input: 'x', output: 2 },
+        ],
+      },
+    });
+    emit(handlers.eventHandler, 'kilo', 'mimo-v2.6-flash-free', {
+      inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000,
+    });
+    const served = await serve(handlers.routeHandler);
+    assert.equal(served.todayTokens, 3_000_000);
+    assert.equal(served.pricing.estimateComplete, true);
+    assert.ok(Math.abs(served.todayCost - 4 * 7.2) < 1e-9);
+  } finally { await home.dispose(); }
 });

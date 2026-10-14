@@ -240,12 +240,14 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       const pricing = data?.pricing;
       const balanceText = cny != null ? `¥${cny}` : balanceUnavailableText(data?.balance);
       const todayText = today != null ? formatTokens(today) : '…';
-      const costText = cost != null ? formatCny(cost) : '…';
+      const estimateIncomplete = pricing?.estimateComplete === false;
+      const costText = cost != null ? `${formatCny(cost)}${estimateIncomplete ? '*' : ''}` : '…';
       const pricingDate = typeof pricing?.verifiedDate === 'string' ? pricing.verifiedDate : '待核验';
       const bandText = pricing?.band === 'peak' ? '峰时' : pricing?.band === 'offPeak' ? '谷时' : '未知时段';
       const dailyLabel = hddMode ? '今日电量' : '今日token';
       const dailySummaryLabel = hddMode ? '今日电量' : '今日 token';
-      const summary = `DeepSeek 余额 ${balanceText}，${dailySummaryLabel} ${todayText}，今日估算 ${costText}；计价源 DeepSeek V4 Flash 官方价 ${pricingDate}，当前${bandText}，汇率按 1 USD = ¥${pricing?.usdToCnyEstimate ?? '…'}`;
+      const estimateNote = estimateIncomplete ? '；今日含未定价模型，金额仅按已定价部分累计' : '';
+      const summary = `DeepSeek 余额 ${balanceText}，${dailySummaryLabel} ${todayText}，今日估算 ${costText}${estimateNote}；计价源 DeepSeek V4 Flash 官方价 ${pricingDate}，当前${bandText}，汇率按 1 USD = ¥${pricing?.usdToCnyEstimate ?? '…'}`;
       const box = {
         margin: compact ? '0' : '8px', padding: compact ? '0' : '7px 10px',
         width: compact ? '36px' : undefined, height: compact ? '36px' : undefined,

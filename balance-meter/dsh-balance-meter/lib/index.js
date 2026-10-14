@@ -105,12 +105,66 @@ export function pricingBandForDate(date = new Date()) {
 }
 
 export function estimateUsageUsd(usage, date = new Date()) {
-  const rate = USD_PER_MILLION[pricingBandForDate(date)];
+  return estimateUsageUsdWith(USD_PER_MILLION[pricingBandForDate(date)], usage);
+}
+
+/** Price one usage event with an explicit USD-per-million rate table. */
+export function estimateUsageUsdWith(rate, usage) {
   return (
     tokenCount(usage?.cacheReadTokens) * rate.cacheHit
     + (tokenCount(usage?.inputTokens) + tokenCount(usage?.cacheWriteTokens)) * rate.cacheMiss
     + tokenCount(usage?.outputTokens) * rate.output
   ) / 1_000_000;
+}
+
+/** Normalize one bundle-config pricing entry into the internal rate shape. */
+function normalizeCustomPricingEntry(entry, index) {
+  if (!entry || typeof entry !== 'object') return null;
+  const model = typeof entry.model === 'string' ? entry.model.trim() : '';
+  if (!model) return null;
+  const finite = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  };
+  const input = finite(entry.input);
+  const output = finite(entry.output);
+  if (input === null || output === null) return null;
+  return {
+    model,
+    rate: {
+      cacheHit: finite(entry.cacheRead) ?? input,
+      cacheMiss: input,
+      output,
+    },
+    index,
+  };
+}
+
+/** Read `balancePricing.models` from the bundle config; malformed entries are dropped. */
+function parseCustomPricing(config) {
+  const models = config?.balancePricing?.models;
+  if (!Array.isArray(models)) return [];
+  return models.map(normalizeCustomPricingEntry).filter(Boolean);
+}
+
+const OFFICIAL_MODEL_PREFIX = 'deepseek';
+const OFFICIAL_PROVIDER_FRAGMENT = 'deepseek';
+
+/**
+ * Classify one usage event by its message source. Bundle-config entries win
+ * (exact model match), official DeepSeek models use the built-in schedule,
+ * anything else is unpriced: tokens are still counted but no money accrues
+ * and the daily estimate is flagged incomplete.
+ */
+function classifyUsageSource(source, customPricing) {
+  const model = typeof source?.model === 'string' ? source.model : '';
+  const provider = typeof source?.provider === 'string' ? source.provider : '';
+  const custom = customPricing.find((entry) => entry.model === model);
+  if (custom) return { kind: 'custom', entry: custom };
+  if (model.startsWith(OFFICIAL_MODEL_PREFIX) || provider.includes(OFFICIAL_PROVIDER_FRAGMENT)) {
+    return { kind: 'official' };
+  }
+  return { kind: 'unpriced' };
 }
 
 function localDateKey(date = new Date()) {
@@ -209,7 +263,8 @@ function todayCostCny() {
   return todayEstimatedUsd * USD_TO_CNY_ESTIMATE;
 }
 
-export function apply(ctx) {
+export function apply(ctx, config) {
+  const customPricing = parseCustomPricing(config);
   return diagnostics.guard('apply', () => {
   if (appliedContexts.has(ctx)) return;
   appliedContexts.add(ctx);
@@ -227,7 +282,16 @@ export function apply(ctx) {
     todayOutput += tokenCount(usage.outputTokens);
     todayCacheRead += tokenCount(usage.cacheReadTokens);
     todayCacheWrite += tokenCount(usage.cacheWriteTokens);
-    todayEstimatedUsd += estimateUsageUsd(usage, event.time ?? new Date());
+    const classification = classifyUsageSource(event.data.message?.source, customPricing);
+    if (classification.kind === 'official') {
+      todayEstimatedUsd += estimateUsageUsd(usage, event.time ?? new Date());
+    } else if (classification.kind === 'custom') {
+      todayEstimatedUsd += estimateUsageUsdWith(classification.entry.rate, usage);
+    } else {
+      // Unpriced non-official model: the tokens are real but the DeepSeek
+      // price is not — skip the money accrual and flag today incomplete.
+      todayEstimateComplete = false;
+    }
     saveDaily();
   });
 

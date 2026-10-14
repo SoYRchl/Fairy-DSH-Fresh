@@ -86,7 +86,7 @@ test('every Fairy plugin entrypoint owns a guarded top-level apply boundary', as
     read('../../fairy-visual/dsh-fairy-visual/src/client/index.js'),
   ]);
   sources.forEach((source) => {
-    assert.match(source, /function apply\(ctx?\)|function apply\(\)/);
+    assert.match(source, /function apply\(ctx(?:, config)?\)|function apply\(\)/);
     assert.match(source, /diagnostics\.guard\('apply'/);
   });
 });
