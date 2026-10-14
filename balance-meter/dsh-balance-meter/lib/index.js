@@ -45,14 +45,17 @@ async function getBalance() {
   activeBalanceController = controller;
   const request = (async () => {
     const key = readApiKey();
-    if (!key) return { is_available: false };
+    if (!key) return { is_available: false, reason: 'no-key' };
     const timeout = setTimeout(() => controller.abort('timeout'), BALANCE_TIMEOUT_MS);
     try {
       const response = await fetch(BALANCE_URL, {
         headers: { Authorization: `Bearer ${key}` },
         signal: controller.signal,
       });
-      if (!response.ok) return { is_available: false };
+      if (!response.ok) {
+        diagnostics.warn('balance.fetch', { status: response.status }, new Error(`http ${response.status}`));
+        return { is_available: false, reason: `http-${response.status}` };
+      }
       cachedBalance = await response.json();
       cachedAt = Date.now();
       return cachedBalance;
@@ -60,7 +63,7 @@ async function getBalance() {
       if (error?.name !== 'AbortError' || controller.signal.reason === 'timeout') {
         diagnostics.warn('balance.fetch', { reason: controller.signal.reason || 'request-failed' }, error);
       }
-      return { is_available: false };
+      return { is_available: false, reason: 'network' };
     } finally {
       clearTimeout(timeout);
       diagnostics.metric('balance.fetch', startedAt, { aborted: controller.signal.aborted });

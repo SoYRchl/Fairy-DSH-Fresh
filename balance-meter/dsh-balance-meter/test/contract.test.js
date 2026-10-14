@@ -93,8 +93,14 @@ test('keeps balance credentials server-only and renders remote failures as unava
   assert.match(server, /function readApiKey\(\)/);
   assert.match(server, /Authorization: `Bearer \$\{key\}`/);
   assert.doesNotMatch(client, /DEEPSEEK_API_KEY|credentials|Authorization|readApiKey/);
-  assert.match(client, /const BALANCE_UNAVAILABLE_TEXT = 'unavailable'/);
-  assert.match(client, /balance: \{ is_available: false \}/);
+  assert.match(client, /const BALANCE_UNAVAILABLE_TEXT = '暂不可用'/);
+  assert.match(client, /const balanceUnavailableText = \(balance\) =>/);
+  assert.match(client, /'no-key': '未配置'/);
+  assert.match(client, /'http-401': '密钥无效'/);
+  assert.match(client, /balance: \{ is_available: false, reason: 'network' \}/);
+  assert.match(server, /reason: `http-\$\{response\.status\}`/);
+  assert.match(server, /reason: 'no-key'/);
+  assert.match(server, /diagnostics\.warn\('balance\.fetch', \{ status: response\.status \}/);
   assert.match(client, /data\?\.balance\?\.is_available === false \? null/);
   assert.match(client, /const today = typeof data\?\.todayTokens === 'number'/);
   assert.match(client, /const cost = typeof data\?\.todayCost === 'number'/);

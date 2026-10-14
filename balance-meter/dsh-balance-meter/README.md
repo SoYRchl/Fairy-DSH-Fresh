@@ -15,6 +15,13 @@ file migrated from the former fixed-price schema is labelled `含迁移估算`
 until the next local-day rollover because historical event times cannot be
 reconstructed from aggregated counters.
 
+When the balance lookup fails, the card renders a Chinese reason instead of a
+bare `unavailable` token: `未配置` (no key in the credentials file), `密钥无效`
+(HTTP 401), `账户欠费` (HTTP 402), `无权限` (HTTP 403), `请求过快` (HTTP 429),
+`网络失败` (request failed), and `暂不可用` for any other outcome. The server
+also logs `balance.fetch` with the HTTP status, so a non-2xx reply is
+attributable from `DSH_FAIRY_LOG`.
+
 The visible daily row preserves the native wording `今日token` in normal mode
 and uses `今日电量` only while the published visual snapshot
 `data-dsh-fairy-mode="hdd"` is active. The component observes that read-only

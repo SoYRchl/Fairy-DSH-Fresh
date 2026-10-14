@@ -7,7 +7,16 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const jsxRuntime = require('react/jsx-runtime');
     const inject = ['slots', 'connection', 'sessions'];
-    const BALANCE_UNAVAILABLE_TEXT = 'unavailable';
+    const BALANCE_UNAVAILABLE_TEXT = '暂不可用';
+    const BALANCE_REASON_TEXT = {
+      'no-key': '未配置',
+      'http-401': '密钥无效',
+      'http-402': '账户欠费',
+      'http-403': '无权限',
+      'http-429': '请求过快',
+      network: '网络失败',
+    };
+    const balanceUnavailableText = (balance) => (balance?.reason && BALANCE_REASON_TEXT[balance.reason]) || BALANCE_UNAVAILABLE_TEXT;
     const POLL_ACTIVE_MS = 30_000;
     const POLL_IDLE_MS = 120_000;
 
@@ -132,7 +141,7 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
             // the remote balance failure explicit to the user.
             setData((current) => current?.balance?.is_available === false
               ? current
-              : { ...(current || {}), balance: { is_available: false } });
+              : { ...(current || {}), balance: { is_available: false, reason: 'network' } });
           }
         } finally {
           meterDiagnostics.metric('balance.request', startedAt, { active_session: sessionActive }, { thresholdMs: 100 });
@@ -229,7 +238,7 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       const today = typeof data?.todayTokens === 'number' ? data.todayTokens : null;
       const cost = typeof data?.todayCost === 'number' ? data.todayCost : null;
       const pricing = data?.pricing;
-      const balanceText = cny != null ? `¥${cny}` : BALANCE_UNAVAILABLE_TEXT;
+      const balanceText = cny != null ? `¥${cny}` : balanceUnavailableText(data?.balance);
       const todayText = today != null ? formatTokens(today) : '…';
       const costText = cost != null ? formatCny(cost) : '…';
       const pricingDate = typeof pricing?.verifiedDate === 'string' ? pricing.verifiedDate : '待核验';
