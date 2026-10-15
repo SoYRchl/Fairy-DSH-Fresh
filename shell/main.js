@@ -479,8 +479,8 @@ const SHELL_CSS = `
 `;
 
 const SHELL_JS = `(() => {
-  const GLYPH_MAX = '\\u25a1';      // □ maximize
-  const GLYPH_RESTORE = '\\u2750';  // ❐ restore
+  const GLYPH_MAX = '\\u25a1';      // maximize glyph (box)
+  const GLYPH_RESTORE = '\\u2750';  // restore glyph
   const syncMaxGlyph = (btn) => {
     try {
       window.fairyShell.isMaximized().then((m) => {
@@ -819,28 +819,28 @@ function restartBackend() {
 }
 
 function trayBackendLabel() {
-  if (backendFailure) return '后端已退出';
-  if (backendReady) return `后端运行中 · 端口 ${PORT}`;
-  return '启动中…';
+  if (backendFailure) return '\\u540e\\u7aef\\u5df2\\u9000\\u51fa';
+  if (backendReady) return `\\u540e\\u7aef\\u8fd0\\u884c\\u4e2d \\u00b7 \\u7aef\\u53e3 ${PORT}`;
+  return '\\u542f\\u52a8\\u4e2d\\u2026';
 }
 
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
-    { label: '打开 Fairy', click: showMainWindow },
+    { label: '\\u6253\\u5f00 Fairy', click: showMainWindow },
     {
-      label: '隐藏到托盘',
+      label: '\\u9690\\u85cf\\u5230\\u6258\\u76d8',
       click: () => { if (mainWindow) mainWindow.hide(); },
     },
     { type: 'separator' },
     { label: trayBackendLabel(), enabled: false },
     {
-      label: '重启后端',
+      label: '\\u91cd\\u542f\\u540e\\u7aef',
       enabled: !!ownedBackendPid,
       click: restartBackend,
     },
     { type: 'separator' },
     {
-      label: '退出（停止后端）',
+      label: '\\u9000\\u51fa\\uff08\\u505c\\u6b62\\u540e\\u7aef\\uff09',
       click: () => { quitting = true; app.quit(); },
     },
   ]);
@@ -851,7 +851,7 @@ function createTray() {
   if (!icon) { shellLog('[tray] no icon available, skipped'); return; }
   try {
     tray = new Tray(icon);
-    tray.setToolTip(`Fairy-DSH-Fresh · ${PORT}`);
+    tray.setToolTip(`Fairy-DSH-Fresh \\u00b7 ${PORT}`);
     tray.setContextMenu(buildTrayMenu());
     // Left click toggles the window; right click shows the menu (default on Win).
     tray.on('click', () => {

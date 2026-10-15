@@ -146,6 +146,7 @@ node tools\run-tests.mjs            # 跑测试（每个文件 60s 超时）
 node tools\bootstrap.mjs            # 依赖 → junction → 产物 mtime → 自检（幂等）
 node tools\bootstrap.mjs --check   # 只体检
 ```
+> 依赖分两处装（`profiles/web` 与各插件包）；**pnpm 11/12 不建 `link:` 链接**，首次拉起靠 `tools/restore-link-deps.mjs` 补 junction（幂等）。
 
 详见 [docs/测试与CI.md](docs/测试与CI.md)。
 
