@@ -141,11 +141,14 @@ fs.renameSync(path.join(staging, 'electron.exe'), path.join(staging, 'Fairy-DSH-
  *   用 FAIRY_RESEDIT 指到它的安装目录即可；指不到就只警告不失败 ——
  *   图标是锦上添花，不该挡住发包。 */
 const reseditDir = process.env.FAIRY_RESEDIT;
-const reseditEntry = reseditDir ? path.join(reseditDir, 'node_modules', 'resedit', 'cjs.cjs') : '';
+// resedit 的 CJS 入口只有一个 load()，真正的东西在 ESM 主入口；直接 import 主入口。
+const reseditEntry = reseditDir
+  ? path.join(reseditDir, 'node_modules', 'resedit', 'dist', 'index.js')
+  : '';
 if (reseditEntry && fs.existsSync(reseditEntry)) {
   log('stamping exe icon ...');
-  const { createRequire } = await import('node:module');
-  const ResEdit = createRequire(import.meta.url)(reseditEntry);
+  const { pathToFileURL } = await import('node:url');
+  const ResEdit = await import(pathToFileURL(reseditEntry).href);
   const exePath = path.join(staging, 'Fairy-DSH-Fresh.exe');
   const executable = ResEdit.NtExecutable.from(fs.readFileSync(exePath));
   const resource = ResEdit.NtExecutableResource.from(executable);
