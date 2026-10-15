@@ -13,6 +13,17 @@ import { randomUUID } from 'node:crypto';
 import { createLocalTtsTransport } from './local-tts-proxy.js';
 /* [local patch 0.3.2] 第二条朗读路线：本机 MOSS-TTS-Nano */
 import { createMossTtsTransport } from './moss-tts-transport.js';
+/* [T-128 · 云朵版兼容吸收] TTS provider 注册表：本仓原有两条路（SoVITS / MOSS）
+ * 由 if/else 二选一升级为 id→provider 表，并新增 openai / custom-http 两条云端路。 */
+import {
+  DEFAULT_PROVIDER_ID,
+  PROVIDER_CONFIG_FIELDS,
+  PROVIDER_IDS,
+  configForProvider,
+  configKeyForProvider,
+  createTtsProviderRegistry,
+  normalizeProvider,
+} from '../providers/tts-index.js';
 import { readFileSync, statSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -149,6 +160,22 @@ export function normalizeTtsBase(input) {
   return { ok: true, base: `${url.protocol}//${url.host}` };
 }
 
+/** 配置文件里**原样**存着的 providers 分区（不含默认值），供保存时做增量合并。 */
+function readStoredProviders() {
+  try {
+    const value = JSON.parse(readFileSync(RUNTIME_CONFIG_PATH, 'utf8'))?.providers;
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 某个 provider 的分区配置（默认值 ← 旧字段 ← 分区里存的值）。 */
+function providersSectionFor(id, stored = {}) {
+  const merged = configForProvider(id, stored);
+  return { key: configKeyForProvider(id), ...merged };
+}
+
 /** 当前生效的运行时配置（文件 → 默认值）。 */
 export function readRuntimeConfig() {
   let stored = null;
@@ -163,7 +190,10 @@ export function readRuntimeConfig() {
   }
   /* [local patch 0.3.2] 两个引擎各自记住自己的地址，切换时不丢。
    * 老配置里只有 ttsUrl（那会儿只有 SoVITS），读进来当 SoVITS 地址用 —— 老用户升级不受影响。 */
-  const engine = normalizeEngine(stored?.engine);
+  /* [T-128] engine 字段的语义扩展为「provider id」：旧值 gpt-sovits / moss-nano 仍在清单内，
+   * 新增 openai / custom-http。不认识的仍回落到默认引擎（normalizeProvider 与旧
+   * normalizeEngine 对旧值的判定完全一致，老配置升级后行为不变）。 */
+  const engine = normalizeProvider(stored?.engine);
   const legacyBase = typeof stored?.ttsUrl === 'string' ? stored.ttsUrl : '';
   const sovits = normalizeTtsBase(stored?.sovitsBase ?? legacyBase ?? DEFAULT_TTS_BASE);
   const sovitsBase = sovits.ok ? sovits.base : DEFAULT_TTS_BASE;
@@ -183,6 +213,14 @@ export function readRuntimeConfig() {
     docsUrl: engine === ENGINE_MOSS ? `${base}${MOSS_HEALTH_PATH}` : `${base}/docs`,
     sovitsBase,
     mossBase,
+    /* [T-128] 注册表视图：provider 是当前选中的 id，providers 是各 provider 的分区配置
+     * （已与默认值、旧字段合并）。UI 与自检都从这里读，不自己拼。 */
+    provider: engine,
+    providerIds: [...PROVIDER_IDS],
+    providerFields: PROVIDER_CONFIG_FIELDS,
+    providers: Object.fromEntries(
+      PROVIDER_IDS.map((id) => [id, providersSectionFor(id, { ...stored, sovitsBase, mossBase })]),
+    ),
     referenceAudioPath: audio,
     referencePromptPath: prompt,
     configured: stored !== null,
@@ -203,7 +241,11 @@ export function readRuntimeConfig() {
  * 这里只算一份**临时**配置，**绝不写磁盘**；保存仍然只由 saveRuntimeConfig 负责。
  */
 export function applyConfigOverrides(config, overrides = {}) {
-  const engine = overrides.engine === undefined ? config.engine : normalizeEngine(overrides.engine);
+  /* [T-128] 同时认 provider（新名）与 engine（旧名），两者语义相同。 */
+  const requested = overrides.provider !== undefined
+    ? overrides.provider
+    : (overrides.engine !== undefined ? overrides.engine : config.engine);
+  const engine = normalizeProvider(requested);
   let sovitsBase = config.sovitsBase;
   let mossBase = config.mossBase;
   const rawBase = typeof overrides.base === 'string' ? overrides.base.trim() : '';
@@ -261,7 +303,8 @@ async function writeJsonPrivate(file, value) {
  */
 export async function saveRuntimeConfig(input = {}) {
   const current = readRuntimeConfig();
-  const engine = input.engine === undefined ? current.engine : normalizeEngine(input.engine);
+  const requestedEngine = input.provider !== undefined ? input.provider : input.engine;
+  const engine = requestedEngine === undefined ? current.engine : normalizeProvider(requestedEngine);
   const rawBaseInput = typeof input.base === 'string' ? input.base : (typeof input.ttsUrl === 'string' ? input.ttsUrl : '');
   const rawBase = rawBaseInput.trim();
   const rawAudio = typeof input.referenceAudioPath === 'string' ? input.referenceAudioPath.trim() : '';
@@ -276,11 +319,23 @@ export async function saveRuntimeConfig(input = {}) {
   if (rawAudio !== '' && !/[\\/]/.test(rawAudio)) {
     return { ok: false, error: '参考音频要填完整路径，例如 <USER_HOME>\\.dsh\\fairy-voice\\reference\\fairy_ref.wav' };
   }
+  /* [T-128] providers 分区：只写「使用者显式改过的键」，不把默认值灌进配置文件
+   * （默认值会随版本变，写死了以后改默认值就失效）。 */
+  const providersInput = input.providers && typeof input.providers === 'object' ? input.providers : null;
+  const nextProviders = { ...readStoredProviders() };
+  if (providersInput) {
+    for (const [key, value] of Object.entries(providersInput)) {
+      if (!value || typeof value !== 'object') continue;
+      nextProviders[key] = { ...(nextProviders[key] || {}), ...value };
+    }
+  }
   await writeJsonPrivate(RUNTIME_CONFIG_PATH, {
-    version: 2,
+    version: 3,
     engine,
+    provider: engine,
     sovitsBase,
     mossBase,
+    ...(Object.keys(nextProviders).length > 0 ? { providers: nextProviders } : {}),
     referenceAudioPath: rawAudio === '' ? DEFAULT_REFERENCE_AUDIO_PATH : rawAudio,
   });
   return { ok: true, config: readRuntimeConfig() };
@@ -289,28 +344,19 @@ export async function saveRuntimeConfig(input = {}) {
 /** 用当前配置构造一次性的 TTS 传输层（改了设置不用重启）。 */
 export function buildTtsTransport(config, deps = {}) {
   const { fetchImpl = fetch, ttsTimeoutMs = 180_000, statusTimeoutMs = 3_000 } = deps;
-  /* [local patch 0.3.2] 按引擎分派。两条路的对外形状完全一致（status / stream），
-   * 所以上层的朗读流程一行都不用改。默认仍是 SoVITS，不选就等于没改过。 */
-  if (normalizeEngine(config?.engine) === ENGINE_MOSS) {
-    return createMossTtsTransport({
-      fetchImpl,
-      base: config.base,
-      generateUrl: config.ttsUrl,
-      healthUrl: config.docsUrl,
-      referenceAudioPath: config.referenceAudioPath,
-      timeoutMs: ttsTimeoutMs,
-      statusTimeoutMs,
-    });
-  }
-  return createLocalTtsTransport({
-    fetchImpl,
-    ttsUrl: config.ttsUrl,
-    docsUrl: config.docsUrl,
-    referenceAudioPath: config.referenceAudioPath,
-    referencePrompt: readReferencePrompt(config),
-    ttsTimeoutMs,
-    statusTimeoutMs,
-  });
+  /* [T-128] 分派改为查注册表：id → provider。对外形状**完全不变**（status / stream），
+   * 所以 index.js 的朗读流程一行都不用改。默认仍是 GPT-SoVITS，不选就等于没改过。
+   * ⚠ 旧的两条路仍走各自原有的 transport（local-tts-proxy / moss-tts-transport），
+   *   这里只是换了选路方式 —— 不是重写，行为等价。 */
+  const registry = createTtsProviderRegistry({ fetchImpl, ttsTimeoutMs, statusTimeoutMs });
+  const selection = registry.resolve(config);
+  const provider = selection.provider || registry.PROVIDERS.get(DEFAULT_PROVIDER_ID);
+  const providerConfig = selection.config || {};
+  return {
+    providerId: selection.id,
+    status: (signal) => provider.status(providerConfig, { signal }),
+    stream: (text, signal) => provider.stream(text, providerConfig, { signal }),
+  };
 }
 
 const REFERENCE_PROMPT_FALLBACK = '根据用户协议，我无权回复该问题。主人将在合适的时间与合适的场合获知答案。';

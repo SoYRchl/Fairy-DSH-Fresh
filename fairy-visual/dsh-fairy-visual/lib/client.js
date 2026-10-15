@@ -7848,7 +7848,7 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
         className: 'dsh-fairy-notice',
         'data-dsh-fairy-notice': 'true',
         style: { fontSize: '11px', lineHeight: 1.6, opacity: 0.55, marginBottom: '12px' },
-        children: '当前版本 v0.1.0-alpha · Fairy-DSH-Fresh 独立桌面壳（血缘与署名见仓库根 CONTRIBUTORS.md）'
+        children: '当前版本 v0.1.0-alpha.2 · Fairy-DSH-Fresh 独立桌面壳（血缘与署名见仓库根 CONTRIBUTORS.md）'
       });
     }
     /* [compat patch] HDD 视觉模式改为可选：未开启时在设置面板提示。

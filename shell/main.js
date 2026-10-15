@@ -824,6 +824,35 @@ function trayBackendLabel() {
   return '\\u542f\\u52a8\\u4e2d\\u2026';
 }
 
+/* --- Auto-start (D-058) -----------------------------------------------------
+ * Why it lives in the shell instead of a Startup-folder shortcut:
+ * the agent sandbox cannot write to the user's Startup folder at all, so a
+ * command-line toggle would have to be run by the user by hand. Writing the
+ * login item from inside the app (Electron's own API, running under the user's
+ * account) needs no elevated write and no command line.
+ * State is read back from the OS every time (getLoginItemSettings) instead of
+ * being cached in a file: the OS is the source of truth, and a portable zip
+ * that moves to a new folder simply reports off until the user turns it on again.
+ * Default is OFF - installing a login item is a change to the user's boot
+ * behaviour, so it must be an opt-in click, never a packaging default. */
+function isAutostartEnabled() {
+  try {
+    return app.getLoginItemSettings().openAtLogin === true;
+  } catch (error) {
+    shellLog(`[autostart] read failed: ${error && error.message}`);
+    return false;
+  }
+}
+
+function setAutostart(enabled) {
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled === true });
+    shellLog(`[autostart] openAtLogin=${enabled === true}`);
+  } catch (error) {
+    shellLog(`[autostart] write failed: ${error && error.message}`);
+  }
+}
+
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: '\\u6253\\u5f00 Fairy', click: showMainWindow },
@@ -837,6 +866,17 @@ function buildTrayMenu() {
       label: '\\u91cd\\u542f\\u540e\\u7aef',
       enabled: !!ownedBackendPid,
       click: restartBackend,
+    },
+    { type: 'separator' },
+    {
+      // D-058: opt-in only; unchecked on first run.
+      label: '\\u5f00\\u673a\\u81ea\\u542f',
+      type: 'checkbox',
+      checked: isAutostartEnabled(),
+      click: (item) => {
+        setAutostart(item.checked);
+        if (tray) tray.setContextMenu(buildTrayMenu());
+      },
     },
     { type: 'separator' },
     {
