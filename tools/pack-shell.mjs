@@ -248,9 +248,13 @@ if (nsisExe && !stageOnly) {
 let zipDirName = name;
 let finalDir = path.join(distRoot, name);
 if (fs.existsSync(finalDir)) {
-  zipDirName = `${name}-b${buildId}`;
-  finalDir = path.join(distRoot, zipDirName);
-  log(`note: ${name} already exists in dist; using ${zipDirName}`);
+  // A previous release dir is in the way (e.g. it accumulated runtime data
+  // during verification). Rename it aside first -- renames are instant, and
+  // silently falling back to a -b<id> zip root name is worse for users.
+  const aside = path.join(distRoot, `_old-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}`);
+  fs.renameSync(finalDir, aside);
+  log(`previous ${name} moved aside -> ${path.basename(aside)}`);
+  finalDir = path.join(distRoot, name);
 }
 fs.renameSync(staging, finalDir);
 
