@@ -128,6 +128,40 @@ robocopy(electronDist, staging);
 try { fs.unlinkSync(path.join(staging, 'resources', 'default_app.asar')); } catch {}
 fs.renameSync(path.join(staging, 'electron.exe'), path.join(staging, 'Fairy-DSH-Fresh.exe'));
 
+/* exe 自带图标（任务栏 / 资源管理器里看到的那个）。
+ *
+ * 快捷方式与「添加/删除程序」里的图标早就用上 Fairy 眼睛了（见 tools/pack/installer.nsi），
+ * 只有 exe 本身的 PE 资源还是 electron 默认的 —— 换它要改 PE 资源。
+ *
+ * ★ 为什么用 resedit 而不是官方的 rcedit：rcedit 是 spawn 一个 .exe 去改，
+ *   而本机沙箱里 node 的 spawnSync 一律 EBUSY（任何 exe 都不行），打包会直接失败；
+ *   resedit 是纯 JS，在进程内改完写回，没有子进程。
+ *
+ * ★ 为什么不进本仓依赖：这是一次性的打包期工具，进依赖会让所有人 install 都多拖两个包。
+ *   用 FAIRY_RESEDIT 指到它的安装目录即可；指不到就只警告不失败 ——
+ *   图标是锦上添花，不该挡住发包。 */
+const reseditDir = process.env.FAIRY_RESEDIT;
+const reseditEntry = reseditDir ? path.join(reseditDir, 'node_modules', 'resedit', 'cjs.cjs') : '';
+if (reseditEntry && fs.existsSync(reseditEntry)) {
+  log('stamping exe icon ...');
+  const { createRequire } = await import('node:module');
+  const ResEdit = createRequire(import.meta.url)(reseditEntry);
+  const exePath = path.join(staging, 'Fairy-DSH-Fresh.exe');
+  const executable = ResEdit.NtExecutable.from(fs.readFileSync(exePath));
+  const resource = ResEdit.NtExecutableResource.from(executable);
+  const iconFile = ResEdit.Data.IconFile.from(
+    fs.readFileSync(path.join(repoRoot, 'tools', 'assets', 'fairy-eye.ico')),
+  );
+  ResEdit.Resource.IconGroupEntry.replaceIconsForResource(
+    resource.entries, 1, 1033, iconFile.icons.map((item) => item.data),
+  );
+  resource.outputResource(executable);
+  fs.writeFileSync(exePath, Buffer.from(executable.generate()));
+  log(`icon: fairy-eye (${iconFile.icons.length} size(s))`);
+} else {
+  log('icon: skipped (FAIRY_RESEDIT not set; exe keeps the stock electron icon)');
+}
+
 log('copying shell app files ...');
 const appDir = path.join(staging, 'resources', 'app');
 fs.mkdirSync(appDir, { recursive: true });
