@@ -214,12 +214,15 @@ export function readRuntimeConfig() {
     sovitsBase,
     mossBase,
     /* [T-128] 注册表视图：provider 是当前选中的 id，providers 是各 provider 的分区配置
-     * （已与默认值、旧字段合并）。UI 与自检都从这里读，不自己拼。 */
+     * （已与默认值、旧字段合并）。UI 与自检都从这里读，不自己拼。
+     * ★ 分区一律用【配置键】（sovits / moss / openai / customHttp）作键，不是 provider id：
+     *   落盘的 config.json 就是按配置键存的（configForProvider 也按配置键读），
+     *   这里若按 id 分组，读出来和写进去就成了两套键，保存一次就对不上。 */
     provider: engine,
     providerIds: [...PROVIDER_IDS],
     providerFields: PROVIDER_CONFIG_FIELDS,
     providers: Object.fromEntries(
-      PROVIDER_IDS.map((id) => [id, providersSectionFor(id, { ...stored, sovitsBase, mossBase })]),
+      PROVIDER_IDS.map((id) => [configKeyForProvider(id), providersSectionFor(id, { ...stored, sovitsBase, mossBase })]),
     ),
     referenceAudioPath: audio,
     referencePromptPath: prompt,
@@ -723,10 +726,17 @@ export async function runVoiceSelfCheck({ fetchImpl = fetch, config = readRuntim
   }
   const failed = checks.filter((check) => check.level === 'fail');
   const warned = checks.filter((check) => check.level === 'warn');
-  const headline = failed.length > 0
-    ? `还有 ${failed.length} 项没过：${failed.map((check) => check.title).join('、')}`
-    : warned.length > 0
-      ? `基本可用（${warned.length} 项提醒）`
-      : '全部通过，朗读功能可用了。';
-  return { ok: failed.length === 0, headline, checks, config };
+  /* [local patch 0.3.6 · T-128] 对外发包时，使用者【默认一台 TTS 都没装】。
+   * 这种情况下「服务连不上 / 没有参考音频」是预期状态，不是故障：
+   * 结论句必须说清「不影响聊天，只是不出声」，否则一打开设置页就是一片红，
+   * 使用者只会以为包是坏的。UI 据此把结论框显示成琥珀色「⏸ 未配置」。 */
+  const unconfigured = config.configured !== true;
+  const headline = unconfigured
+    ? '还没配置朗读服务 —— 这是刚装好的正常状态，Fairy 会照常打字，只是不出声。'
+    : failed.length > 0
+      ? `还有 ${failed.length} 项没过：${failed.map((check) => check.title).join('、')}`
+      : warned.length > 0
+        ? `基本可用（${warned.length} 项提醒）`
+        : '全部通过，朗读功能可用了。';
+  return { ok: failed.length === 0, headline, checks, config, unconfigured };
 }

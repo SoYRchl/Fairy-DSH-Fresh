@@ -44,6 +44,30 @@ function New-MergedVisualText {
       });
     }
     // [local patch 0.2.3] 自检面板：面向完全不懂技术的使用者，每一项都给"怎么修"
+    /* [local patch 0.3.6 · T-128] 朗读服务清单。
+     * ★ 前提：拿到本包的人【默认一台 TTS 都没装】。所以四条路必须平铺出来，
+     *   让使用者按「有没有显卡 / 愿不愿意装 / 有没有 Key」自己挑，
+     *   而不是一上来就假定本机跑着 GPT-SoVITS。
+     * key 与服务端 providers 分区的键一致（sovits / moss / openai / customHttp）。
+     * 本地两条路的「服务地址」仍走既有的 ttsUrl 字段，所以 fields 留空。 */
+    const PROVIDER_OPTIONS = [
+      { id: 'gpt-sovits', key: 'sovits', label: 'GPT-SoVITS（本地 · 默认）', summary: '音色最好；要显卡，得自己跑一个 Python 服务（6-9 GB）', fields: [] },
+      { id: 'moss-nano', key: 'moss', label: 'MOSS-TTS-Nano（本地 · CPU 也能跑）', summary: '一条命令装好（4-5 GB）；整句合成完才出声，约 7 秒', fields: [] },
+      { id: 'openai', key: 'openai', label: 'OpenAI 兼容云端 TTS', summary: '不用自己装，联网即用；要自备 API Key', fields: [
+        { key: 'baseURL', label: '接口地址', placeholder: 'https://api.openai.com/v1' },
+        { key: 'apiKey', label: 'API Key', placeholder: 'sk-...', secret: true },
+        { key: 'model', label: '模型', placeholder: 'gpt-4o-mini-tts' },
+        { key: 'voice', label: '音色', placeholder: 'alloy' },
+        { key: 'responseFormat', label: '返回格式', placeholder: 'wav' }
+      ] },
+      { id: 'custom-http', key: 'customHttp', label: '自定义 HTTP 接口', summary: '接你自己的 TTS 服务，请求体用模板自己拼', fields: [
+        { key: 'url', label: '接口地址', placeholder: 'http://127.0.0.1:5000/tts' },
+        { key: 'method', label: '请求方法', placeholder: 'POST' },
+        { key: 'headersJson', label: '请求头（JSON）', placeholder: '{"Content-Type":"application/json"}' },
+        { key: 'bodyTemplate', label: '请求体模板（{{text}} 会被替换成要念的文本）', placeholder: '{"text":"{{text}}"}' }
+      ] }
+    ];
+    const providerOption = (id) => PROVIDER_OPTIONS.find((item) => item.id === id) || PROVIDER_OPTIONS[0];
     function FairyVoicePanel() {
       const [selfcheck, setSelfcheck] = React.useState({ running: true, ok: false, headline: '正在自检…', checks: [] });
       // [local patch 0.3.2] engine = 当前朗读引擎；sovitsBase/mossBase = 两个引擎各自记住的地址（切换不丢）
@@ -51,7 +75,7 @@ function New-MergedVisualText {
        * 用来判断表单有没有未保存的改动（见下面的 isConfigDirty）。
        * 放在 state 里而不是 ref 里：保存后 loadConfig() 会重刷快照，
        * 于是 dirty 自动归零，不需要在 saveConfig 里额外挂钩子。 */
-      const [configForm, setConfigForm] = React.useState({ engine: 'gpt-sovits', ttsUrl: '', sovitsBase: '', mossBase: '', referenceAudioPath: '', defaultBase: '', defaultSovitsBase: '', defaultMossBase: '', defaultReferenceAudioPath: '', savedEngine: 'gpt-sovits', savedTtsUrl: '', savedReferenceAudioPath: '', loaded: false, saving: false, message: '', error: false });
+      const [configForm, setConfigForm] = React.useState({ engine: 'gpt-sovits', ttsUrl: '', sovitsBase: '', mossBase: '', referenceAudioPath: '', defaultBase: '', defaultSovitsBase: '', defaultMossBase: '', defaultReferenceAudioPath: '', savedEngine: 'gpt-sovits', savedTtsUrl: '', savedReferenceAudioPath: '', providers: {}, savedProviders: '{}', configured: true, loaded: false, saving: false, message: '', error: false });
       const [diagText, setDiagText] = React.useState('');
       const [copyState, setCopyState] = React.useState('');
       // [local patch 0.3.2] 自检明细默认折叠。
@@ -182,8 +206,12 @@ function New-MergedVisualText {
         if (form && form.loaded) {
           const params = new URLSearchParams();
           params.set('engine', form.engine);
-          params.set('base', String(form.ttsUrl || '').trim());
-          params.set('ref', String(form.referenceAudioPath || '').trim());
+          /* [local patch 0.3.6] base / ref 只对本地两条路有意义：云端服务认的是 Key、
+           * 模型这些分区字段，拿本地地址去覆盖会测错对象。 */
+          if (form.engine === 'gpt-sovits' || form.engine === 'moss-nano') {
+            params.set('base', String(form.ttsUrl || '').trim());
+            params.set('ref', String(form.referenceAudioPath || '').trim());
+          }
           query = `?${params.toString()}`;
         }
         fetch(`/fairy-voice/selfcheck${query}`, { cache: 'no-store' })
@@ -212,7 +240,7 @@ function New-MergedVisualText {
             setConfigForm((prev) => ({
               ...prev,
               // [local patch 0.3.2] 引擎与两个地址：base 是当前引擎的，sovitsBase/mossBase 各自留一份
-              engine: value.engine === 'moss-nano' ? 'moss-nano' : 'gpt-sovits',
+              engine: PROVIDER_OPTIONS.some((item) => item.id === value.engine) ? value.engine : 'gpt-sovits',
               ttsUrl: String(value.base || ''),
               sovitsBase: String(value.sovitsBase || ''),
               mossBase: String(value.mossBase || ''),
@@ -222,9 +250,20 @@ function New-MergedVisualText {
               defaultMossBase: String(value.defaultMossBase || ''),
               defaultReferenceAudioPath: String(value.defaultReferenceAudioPath || ''),
               // [local patch 0.3.4] 同时刷新「已保存」快照，dirty 状态随之归零
-              savedEngine: value.engine === 'moss-nano' ? 'moss-nano' : 'gpt-sovits',
+              savedEngine: PROVIDER_OPTIONS.some((item) => item.id === value.engine) ? value.engine : 'gpt-sovits',
               savedTtsUrl: String(value.base || ''),
               savedReferenceAudioPath: String(value.referenceAudioPath || ''),
+              /* [local patch 0.3.6] 分区配置的草稿与快照。服务端每个分区里带的 key 字段
+               * 只是给 UI 认人的，写回去之前先剥掉，免得污染配置文件。 */
+              providers: Object.fromEntries(Object.entries((value.providers && typeof value.providers === 'object') ? value.providers : {}).map(([sectionKey, section]) => {
+                const { key, ...rest } = section || {};
+                return [sectionKey, rest];
+              })),
+              savedProviders: JSON.stringify(Object.fromEntries(Object.entries((value.providers && typeof value.providers === 'object') ? value.providers : {}).map(([sectionKey, section]) => {
+                const { key, ...rest } = section || {};
+                return [sectionKey, rest];
+              }))),
+              configured: value.configured === true,
               loaded: true
             }));
           })
@@ -248,17 +287,39 @@ function New-MergedVisualText {
       const allChecks = selfcheck.checks.concat(clientChecks);
       // [local patch 0.3.2] 当前引擎：决定「地址」那一栏叫什么、占位符是什么
       const isMossEngine = configForm.engine === 'moss-nano';
+      /* [local patch 0.3.6] 当前服务：key 用于读 providers 分区，isLocalProvider 决定
+       * 「服务地址 / 参考音频」这两栏要不要显示（云端服务用不上参考音频）。 */
+      const currentKey = providerOption(configForm.engine).key;
+      const isLocalProvider = currentKey === 'sovits' || currentKey === 'moss';
+      const cloudFields = providerOption(configForm.engine).fields;
       /* [local patch 0.3.4] 选中引擎的唯一入口 —— 上面的下拉框和下面的两个引擎卡片都走这里，
        * 保证两条路行为完全一致（都只改表单、不立即保存；都跟着把地址框换成该引擎自己的地址）。 */
       const selectEngine = React.useCallback((next) => {
+        const key = providerOption(next).key;
         setConfigForm((prev) => ({
           ...prev,
           engine: next,
-          ttsUrl: next === 'moss-nano'
+          /* 云端服务没有「服务地址」这一栏，ttsUrl 保持原样不动；
+           * 只有本地两条路才各自取回自己记着的那份地址。 */
+          ttsUrl: key === 'moss'
             ? (prev.mossBase || prev.defaultMossBase || '')
-            : (prev.sovitsBase || prev.defaultSovitsBase || prev.defaultBase || '')
+            : key === 'sovits'
+              ? (prev.sovitsBase || prev.defaultSovitsBase || prev.defaultBase || '')
+              : prev.ttsUrl
         }));
       }, []);
+      /* [local patch 0.3.6] 保存载荷：本地两条路仍走旧的 engine / base / referenceAudioPath，
+       * 云端两条路额外带上 providers 分区（Key / 模型 / 音色 / 自定义模板）。 */
+      const savePayload = React.useCallback(() => {
+        const key = currentKey;
+        const section = configForm.providers[key] || {};
+        return {
+          provider: configForm.engine,
+          engine: configForm.engine,
+          ...(isLocalProvider ? { base: configForm.ttsUrl.trim(), referenceAudioPath: configForm.referenceAudioPath.trim() } : {}),
+          ...(Object.keys(section).length > 0 ? { providers: { [key]: section } } : {}),
+        };
+      }, [configForm, currentKey, isLocalProvider]);
       /* [local patch 0.3.4] 「改动过、但还没保存」。
        * 只比这三个真正影响朗读的字段；default* 是占位符提示，不参与比较。
        * loadConfig 在加载成功和保存成功后都会跑，所以保存完这里会自动回到 false。 */
@@ -266,6 +327,7 @@ function New-MergedVisualText {
         configForm.engine !== configForm.savedEngine
         || String(configForm.ttsUrl || '').trim() !== String(configForm.savedTtsUrl || '').trim()
         || String(configForm.referenceAudioPath || '').trim() !== String(configForm.savedReferenceAudioPath || '').trim()
+        || JSON.stringify(configForm.providers || {}) !== String(configForm.savedProviders || '{}')
       );
       const failedChecks = allChecks.filter((check) => check.level === 'fail');
       const ready = failedChecks.length === 0 && selfcheck.running === false;
@@ -504,54 +566,32 @@ function New-MergedVisualText {
            * 原来那句只讲当前这个引擎，使用者没法判断"要不要换"；这里两个都摆出来，
            * 让他按自己的机器（有没有显卡、能不能接受等几秒）自己选。
            * 布局用 auto-fit：面板宽就并排，窄就自动上下叠，窄面板下也不会挤成一团。 */
-          jsx('div', { style: { fontSize: '12px', lineHeight: 1.7, opacity: 0.7 }, children: '两个引擎各有所长，按你自己的机器选（直接点卡片也行）：' }),
-          jsxs('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: '8px', fontSize: '12px', lineHeight: 1.6 }, children: [
-            jsxs('div', {
-              /* [local patch 0.3.4] 卡片由「只能看」改成「能点」：点了就选中这个引擎。
-               * 与下拉框共用 selectEngine —— 只改表单、不立即保存，保存统一走下面的按钮。 */
-              onClick: () => selectEngine('gpt-sovits'),
-              style: { border: `1px solid ${isMossEngine ? 'var(--dsw-alias-border-l1, rgba(128,128,128,0.35))' : 'var(--dsw-alias-state-success-primary, #2f9e44)'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer' },
-              children: [
-                jsxs('div', { style: { fontWeight: 700, marginBottom: '4px' }, children: [
-                  jsx('span', { children: 'GPT-SoVITS（默认）' }),
-                  isMossEngine ? null : jsx('span', { style: { fontWeight: 400, opacity: 0.7 }, children: '　· 当前' })
-                ] }),
-                jsx('div', { children: '＋ 边合成边播，几乎不用等' }),
-                jsx('div', { children: '＋ 音色还原最好，生态成熟' }),
-                jsx('div', { children: '－ 要显卡；装起来重（6–9 GB）' }),
-                jsx('div', { children: '－ 得自己跑一个 Python 服务' })
-              ]
-            }),
-            jsxs('div', {
-              onClick: () => selectEngine('moss-nano'),
-              style: { border: `1px solid ${isMossEngine ? 'var(--dsw-alias-state-success-primary, #2f9e44)' : 'var(--dsw-alias-border-l1, rgba(128,128,128,0.35))'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer' },
-              children: [
-                jsxs('div', { style: { fontWeight: 700, marginBottom: '4px' }, children: [
-                  jsx('span', { children: 'MOSS-TTS-Nano' }),
-                  isMossEngine ? jsx('span', { style: { fontWeight: 400, opacity: 0.7 }, children: '　· 当前' }) : null
-                ] }),
-                jsx('div', { children: '＋ 不挑显卡，CPU 就能跑' }),
-                jsx('div', { children: '＋ 一条命令装好（约 4–5 GB）' }),
-                jsx('div', { children: '－ 整句合成完才出声：2–3 秒的话要等约 7 秒' }),
-                jsx('div', { children: '－ 不做文本规范化，数字/符号读法可能不讲究' })
-              ]
-            })
-          ] }),
-          // [local patch 0.3.2] 引擎下拉。切换只是把输入框换成「另一个引擎自己记着的地址」，不改已保存的值。
+          jsxs('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: '8px', fontSize: '12px', lineHeight: 1.6 }, children: PROVIDER_OPTIONS.map((option) => jsxs('div', {
+            key: option.id,
+            onClick: () => selectEngine(option.id),
+            style: { border: `1px solid ${configForm.engine === option.id ? 'var(--dsw-alias-state-success-primary, #2f9e44)' : 'var(--dsw-alias-border-l1, rgba(128,128,128,0.35))'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer' },
+            children: [
+              jsxs('div', { style: { fontWeight: 700, marginBottom: '4px' }, children: [
+                jsx('span', { children: option.label }),
+                configForm.engine === option.id ? jsx('span', { style: { fontWeight: 400, opacity: 0.7 }, children: '　· 当前' }) : null
+              ] }),
+              jsx('div', { style: { opacity: 0.75 }, children: option.summary })
+            ]
+          })) }),
           jsx('label', { style: { display: 'grid', gap: '4px', fontSize: '12px' }, children: [
-            jsx('span', { children: '朗读引擎' }),
+            jsx('span', { children: '朗读服务' }),
             jsx('select', {
               value: configForm.engine,
               'data-dsh-fairy-engine': 'true',
               style: inputStyle,
-              // [local patch 0.3.4] 与卡片共用 selectEngine，两条路的落点一致
-              onChange: (event) => selectEngine(event.target.value === 'moss-nano' ? 'moss-nano' : 'gpt-sovits'),
-              children: [
-                jsx('option', { value: 'gpt-sovits', children: 'GPT-SoVITS（默认，上游原路）' }),
-                jsx('option', { value: 'moss-nano', children: 'MOSS-TTS-Nano（CPU 也能跑，需另装）' })
-              ]
+              onChange: (event) => selectEngine(event.target.value),
+              children: PROVIDER_OPTIONS.map((option) => jsx('option', { key: option.id, value: option.id, children: option.label }))
             })
           ] }),
+          configForm.loaded === true && configForm.configured !== true ? jsx('div', {
+            style: { fontSize: '12px', lineHeight: 1.7, padding: '10px 12px', border: '1px solid var(--dsw-alias-border-l1, rgba(128,128,128,0.35))', borderRadius: '6px' },
+            children: '刚装好就是这个状态 —— 你还没有配过朗读服务。Fairy 会照常打字回答，只是不出声。想让它说话：在上面四条路里挑一条。有显卡、愿意装的，本地两条路最像真人；不想装就用云端，填个 Key 就行。'
+          }) : null,
           /* [local patch 0.3.4] 这行提示平时是灰的说明文字；只要表单改过、还没保存，
            * 就变成红色粗体警示 —— 因为「改了没保存」是这一步最常见的坑。 */
           jsx('div', {
@@ -598,30 +638,46 @@ function New-MergedVisualText {
               ] })
             ]
           }) : null,
-          jsx('label', { style: { display: 'grid', gap: '4px', fontSize: '12px' }, children: [
-            jsx('span', { children: '参考音频路径（.wav，3–10 秒干净人声）' }),
-            jsx('input', {
-              type: 'text', value: configForm.referenceAudioPath, placeholder: configForm.defaultReferenceAudioPath || 'C:\\...\\fairy_ref.wav',
-              'data-dsh-fairy-ref-audio': 'true', style: inputStyle,
-              onChange: (event) => setConfigForm((prev) => ({ ...prev, referenceAudioPath: event.target.value }))
+          /* [local patch 0.3.6 · T-128] 云端服务自己的字段（Key / 模型 / 音色 / 自定义模板）。
+           * 本地两条路不需要这些，所以只在选中云端时出现；值存在 configForm.providers[key] 里，
+           * 四个服务各记一份，切来切去不丢。 */
+          !isLocalProvider ? jsxs('div', { style: { display: 'grid', gap: '8px' }, children: cloudFields.map((field) => jsx('label', {
+            key: field.key,
+            style: { display: 'grid', gap: '4px', fontSize: '12px' },
+            children: [
+              jsx('span', { children: field.label }),
+              jsx('input', {
+                type: field.secret === true ? 'password' : 'text',
+                value: String((configForm.providers[currentKey] || {})[field.key] ?? ''),
+                placeholder: field.placeholder,
+                'data-dsh-fairy-provider-field': field.key,
+                style: inputStyle,
+                onChange: (event) => setConfigForm((prev) => ({ ...prev, providers: { ...prev.providers, [currentKey]: { ...(prev.providers[currentKey] || {}), [field.key]: event.target.value } } }))
+              })
+            ]
+          })) }) : null,
+          isLocalProvider ? jsxs('div', { style: { display: 'grid', gap: '8px' }, children: [
+            jsx('label', { style: { display: 'grid', gap: '4px', fontSize: '12px' }, children: [
+              jsx('span', { children: '参考音频路径（.wav，3–10 秒干净人声）' }),
+              jsx('input', {
+                type: 'text', value: configForm.referenceAudioPath, placeholder: configForm.defaultReferenceAudioPath,
+                'data-dsh-fairy-ref-audio': 'true', style: inputStyle,
+                onChange: (event) => setConfigForm((prev) => ({ ...prev, referenceAudioPath: event.target.value }))
+              })
+            ] }),
+            jsx('div', {
+              style: { fontSize: '12px', lineHeight: 1.7, opacity: 0.7 },
+              children: '注意：这个文件放在你的【用户目录】下，不在插件目录里 —— 插件升级、重装、换安装位置都不会把它弄丢。目录不存在的话，插件启动时会自动建好，里面还附一份 README.txt。'
             })
-          ] }),
-          /* [local patch 0.3.2] 说清楚这个文件到底在哪儿。
-           * 起因：`~/.dsh/fairy-voice` 和插件目录 `.../fairy-voice/dsh-fairy-voice` 名字太像，
-           * 连作者本人都误会成"参考音频应该在插件目录里"。默认位置已换到不像的
-           * `~/.dsh/fairy-DSH-voice-reference/`，这里再补一句话，免得再有人找错地方。 */
-          jsx('div', {
-            style: { fontSize: '12px', lineHeight: 1.7, opacity: 0.7 },
-            children: '注意：这个文件放在你的【用户目录】下，不在插件目录里 —— 插件升级、重装、换安装位置都不会把它弄丢。目录不存在的话，插件启动时会自动建好，里面还附一份 README.txt。'
-          }),
+          ] }) : null,
           jsxs('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' }, children: [
             jsx('button', {
               type: 'button', disabled: configForm.saving,
               'data-dsh-fairy-save-config': 'true',
-              onClick: () => saveConfig({ engine: configForm.engine, base: configForm.ttsUrl.trim(), referenceAudioPath: configForm.referenceAudioPath.trim() }),
+              onClick: () => saveConfig(savePayload()),
               children: configForm.saving ? '保存中…' : '保存设置'
             }),
-            jsx('button', {
+            isLocalProvider ? jsx('button', {
               type: 'button', disabled: configForm.saving,
               onClick: () => saveConfig({
                 engine: configForm.engine,
@@ -631,7 +687,7 @@ function New-MergedVisualText {
                 referenceAudioPath: configForm.defaultReferenceAudioPath || ''
               }),
               children: '恢复默认'
-            })
+            }) : null
           ] }),
           configForm.message ? jsx('div', {
             style: { fontSize: '12px', color: configForm.error ? 'var(--dsw-alias-state-error-primary, #d84a3a)' : 'var(--dsw-alias-state-success-primary, #2f9e44)' },
@@ -650,22 +706,29 @@ function New-MergedVisualText {
             children: selfcheckOpen ? '收起明细' : '展开明细'
           }) }),
           jsx('div', { style: { fontSize: '12px', lineHeight: 1.7, opacity: 0.7, margin: '4px 0 0' }, children: '朗读不出声、或者朗读按钮是灰的？看这里。' }),
-          jsx('div', {
-            'data-dsh-fairy-voice-status': ready ? 'ready' : 'blocked',
-            style: {
-              border: `1px solid ${ready ? 'var(--dsw-alias-state-success-primary, #2f9e44)' : 'var(--dsw-alias-state-error-primary, #d84a3a)'}`,
-              background: ready
-                ? 'color-mix(in srgb, var(--dsw-alias-state-success-primary, #2f9e44) 14%, transparent)'
-                : 'color-mix(in srgb, var(--dsw-alias-state-error-primary, #d84a3a) 16%, transparent)',
-              color: ready ? 'var(--dsw-alias-state-success-primary, #2f9e44)' : 'var(--dsw-alias-state-error-primary, #d84a3a)',
-              borderRadius: '6px', padding: '8px 10px', fontSize: '12px', lineHeight: 1.6, fontWeight: 700
-            },
-            children: selfcheck.running
-              ? `⏳ ${selfcheck.headline}`
-              : ready
-                ? `✅ 朗读功能已就绪。${selfcheck.headline}`
-                : `❌ 朗读还不能用：${selfcheck.headline}${selfcheckOpen ? '' : ' —— 点「展开明细」看逐项原因和怎么修'}`
-          }),
+          (() => {
+            const unconfigured = configForm.loaded === true && configForm.configured !== true;
+            const tone = ready ? 'ok' : (unconfigured ? 'warn' : 'fail');
+            const toneColor = tone === 'ok' ? 'var(--dsw-alias-state-success-primary, #2f9e44)'
+              : tone === 'warn' ? 'var(--dsw-alias-state-warning-primary, #c98a00)'
+              : 'var(--dsw-alias-state-error-primary, #d84a3a)';
+            return jsx('div', {
+              'data-dsh-fairy-voice-status': tone === 'ok' ? 'ready' : (unconfigured ? 'unconfigured' : 'blocked'),
+              style: {
+                border: `1px solid ${toneColor}`,
+                background: `color-mix(in srgb, ${toneColor} ${tone === 'warn' ? 12 : 16}%, transparent)`,
+                color: toneColor,
+                borderRadius: '6px', padding: '8px 10px', fontSize: '12px', lineHeight: 1.6, fontWeight: 700
+              },
+              children: selfcheck.running
+                ? `⏳ ${selfcheck.headline}`
+                : tone === 'ok'
+                  ? `✅ 朗读功能已就绪。${selfcheck.headline}`
+                  : unconfigured
+                    ? `⏸ 还没配置朗读服务 —— 不影响聊天，Fairy 只是不出声。${selfcheck.headline}`
+                    : `❌ 朗读还不能用：${selfcheck.headline}${selfcheckOpen ? '' : ' —— 点「展开明细」看逐项原因和怎么修'}`
+            });
+          })(),
           copyState ? jsx('div', { style: { fontSize: '12px', opacity: 0.8 }, children: copyState }) : null,
           selfcheckOpen ? jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' }, children: [
             jsxs('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' }, children: [

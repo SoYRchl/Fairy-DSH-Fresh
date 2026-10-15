@@ -9,9 +9,63 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createTtsProviderRegistry, normalizeProvider, PROVIDER_IDS, configForProvider } from '../lib/providers/tts-index.js';
+import {
+  createTtsProviderRegistry,
+  normalizeProvider,
+  PROVIDER_IDS,
+  configForProvider,
+  configKeyForProvider,
+} from '../lib/providers/tts-index.js';
 import { DEFAULT_PROVIDER_ID } from '../lib/providers/tts-index.js';
-import { buildTtsTransport } from '../lib/server/voice-selfcheck.js';
+import { buildTtsTransport, runVoiceSelfCheck } from '../lib/server/voice-selfcheck.js';
+
+/* 分区键必须是【配置键】（sovits / moss / openai / customHttp），不能是 provider id。
+ * 落盘的 config.json 就是按配置键存的；UI 读的 providers 视图若按 id 分组，
+ * 保存一次就会读出一套键、写进另一套键，配置静默失效。 */
+test('provider sections round-trip through the same config key', () => {
+  assert.equal(configKeyForProvider('gpt-sovits'), 'sovits');
+  assert.equal(configKeyForProvider('moss-nano'), 'moss');
+  assert.equal(configKeyForProvider('openai'), 'openai');
+  assert.equal(configKeyForProvider('custom-http'), 'customHttp');
+  for (const id of PROVIDER_IDS) {
+    const key = configKeyForProvider(id);
+    const seeded = configForProvider(id, { providers: { [key]: { marker: id } } });
+    assert.equal(seeded.marker, id, `${id} 写进 providers.${key} 后必须能被自己读回来`);
+  }
+});
+
+/* 对外发包的使用者【默认一台 TTS 都没装】。此时自检不能把他当成"坏了"来报，
+ * 结论句必须说清「不影响聊天，只是不出声」，UI 据此显示成琥珀色的「未配置」。 */
+const offlineConfig = (configured) => ({
+  engine: 'gpt-sovits',
+  provider: 'gpt-sovits',
+  base: 'http://127.0.0.1:59999',
+  ttsUrl: 'http://127.0.0.1:59999/tts',
+  docsUrl: 'http://127.0.0.1:59999/docs',
+  referenceAudioPath: 'C:/definitely/not/here/fairy_ref.wav',
+  referencePromptPath: 'C:/definitely/not/here/fairy_ref.txt',
+  providers: { sovits: {}, moss: {}, openai: {}, customHttp: {} },
+  configured,
+});
+const offlineFetch = async () => { throw new Error('ECONNREFUSED'); };
+
+test('a fresh install with no TTS reads as "not configured", not as a failure', async () => {
+  const fresh = await runVoiceSelfCheck({
+    fetchImpl: offlineFetch, withSynthesis: false, config: offlineConfig(false),
+  });
+  assert.equal(fresh.unconfigured, true);
+  assert.match(fresh.headline, /还没配置朗读服务/);
+  assert.match(fresh.headline, /不出声/);
+});
+
+test('a configured install still reports real failures as failures', async () => {
+  const broken = await runVoiceSelfCheck({
+    fetchImpl: offlineFetch, withSynthesis: false, config: offlineConfig(true),
+  });
+  assert.equal(broken.unconfigured, false);
+  assert.doesNotMatch(broken.headline, /还没配置朗读服务/);
+  assert.equal(broken.ok, false);
+});
 
 const fakeResponse = () => ({ ok: true, headers: { get: () => 'audio/raw' } });
 
