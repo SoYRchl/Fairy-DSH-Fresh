@@ -266,6 +266,9 @@ const KNOWN_DIR_NAME_EXCEPTIONS = new Set([
   // fairy-compat 与 fairy-contracts 同理：顶层单层目录（不是 <组>/<包> 两层），
   // 目录名去掉 dsh- 前缀就是包名。它是兼容层骨架，不随插件组发布。
   'fairy-compat',
+  // shell/ 是 ②-C 独立桌面壳：不随插件组发布，打包时整目录拷进
+  // resources/app（目录名 shell 由 tools/pack-shell.mjs 引用，改名要同步两处）。
+  'shell',
 ]);
 
 test('包目录名应与 package.json 的 name 一致（例外已记录）', () => {

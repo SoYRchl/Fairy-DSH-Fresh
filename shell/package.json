@@ -1,0 +1,13 @@
+{
+  "name": "fairy-dsh-shell",
+  "version": "0.3.8",
+  "private": true,
+  "description": "Fairy-DSH-Fresh standalone desktop shell (Electron)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "44.0.0"
+  }
+}
