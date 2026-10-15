@@ -834,7 +834,7 @@ function apply(ctx) {
       return diagnostics.guard('apply', () => {
       const settings = ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE });
       const identitySettings = ctx.settingsScope.bind({ namespace: IDENTITY_SETTINGS_NAMESPACE });
-      syncDocumentMode(settings.getSnapshot());
+      syncDocumentMode({ value: migrateVisualSettings({ ...DEFAULT, ...settings.getSnapshot().value || {} }) });
       injectStyles();
       const selectionGuard = createSelectionGuard({
         selector: [

@@ -1,5 +1,7 @@
-/* Startup splash (phase 2-C parity): the bundled video fills the frame,
-   with a text fallback and a footer status bar (title / status / skip). */
+/* Startup splash: the bundled video fills the ENTIRE window edge to edge;
+   the skip button floats above it. No fallback placeholders (user decision:
+   the video is the splash -- if it cannot play, the main window just takes
+   over as soon as it is ready). */
 html, body {
   margin: 0;
   height: 100%;
@@ -9,75 +11,20 @@ html, body {
   cursor: default;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-main {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background:
-    radial-gradient(120% 90% at 50% 30%, #0a1420 0%, #05090d 58%, #030507 100%);
-}
 #animation {
-  flex: 1;
-  min-height: 0;
+  position: fixed;
+  inset: 0;
   width: 100%;
+  height: 100%;
   object-fit: cover;
 }
-#fallback {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 22px;
-  color: #6f8aa6;
-  font-size: 14px;
-}
-.eye {
-  width: 148px;
-  height: 148px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 38% 34%, #1d3a54 0%, #0e1f31 55%, #081219 100%);
-  box-shadow:
-    0 0 0 2px rgba(126, 178, 226, .22),
-    0 0 42px rgba(80, 150, 210, .28),
-    inset 0 0 26px rgba(0, 0, 0, .55);
-  animation: breathe 3.2s ease-in-out infinite;
-}
-.eye span {
-  color: #9fc6e8;
-  letter-spacing: 6px;
-  font-size: 20px;
-  font-weight: 300;
-}
-@keyframes breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.035); }
-}
-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 22px;
-  background: rgba(4, 8, 13, .72);
-}
-footer strong {
-  display: block;
-  color: #c9dcf0;
-  font-size: 13px;
-  letter-spacing: 3px;
-  font-weight: 500;
-}
-footer p {
-  margin: 2px 0 0;
-  color: #6f8aa6;
-  font-size: 12px;
-}
 #skip {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  z-index: 10;
   border: 1px solid rgba(126, 178, 226, .35);
-  background: rgba(22, 30, 46, .55);
+  background: rgba(10, 16, 24, .55);
   color: #c3d2e8;
   font-size: 12px;
   padding: 5px 14px;

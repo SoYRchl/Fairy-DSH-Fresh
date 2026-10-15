@@ -8682,7 +8682,7 @@ html[data-dsh-fairy-visual][data-dsh-fairy-theme="light"] [data-dsh-fairy-mascot
 				const identitySettings = binder && typeof binder.bind === "function"
 					? binder.bind({ namespace: IDENTITY_SETTINGS_NAMESPACE })
 					: createLocalSettingsScope(IDENTITY_SETTINGS_NAMESPACE);
-				syncDocumentMode(settings.getSnapshot());
+				syncDocumentMode({ value: migrateVisualSettings({ ...DEFAULT, ...settings.getSnapshot().value || {} }) });
 				injectStyles();
 				const selectionGuard = createSelectionGuard({ selector: [
 					OFFICIAL_SELECTORS.sidebarResizeHandle,

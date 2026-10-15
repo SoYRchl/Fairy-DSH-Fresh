@@ -289,10 +289,27 @@ function seedHomeSettings() {
     '  welcomeNoticeVersion: 2026-08-13.1',
     'fairy-visual:',
     '  enabled: true',
-    '  mascotVisible: false',
+    '  mascotVisible: true',
     '',
   ].join('\r\n'), 'ascii');
   shellLog('[home] seeded settings.yaml.imported');
+}
+
+// The Fairy persona preset is installed per-home; the plugin deliberately
+// does NOT auto-install it (a user who turned it off would see it come back).
+// For the "works on first open" contract the shell seeds it once, from the
+// plugin package's bundled corpus; plugin-side sync keeps it fresh after that.
+function seedPersonaPreset() {
+  const source = path.join(REPO, 'fairy-visual', 'dsh-fairy-visual', '.agent-presets', 'fairy');
+  const target = path.join(HOME, '.agent-presets', 'fairy');
+  if (!fs.existsSync(path.join(source, 'agent.cordis.yml'))) {
+    shellLog('[home] persona preset source missing, skipped');
+    return;
+  }
+  if (fs.existsSync(path.join(target, 'agent.cordis.yml'))) return;
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.cpSync(source, target, { recursive: true });
+  shellLog('[home] seeded the Fairy persona preset');
 }
 
 // --- backend lifecycle ---------------------------------------------------------
@@ -799,6 +816,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     ensureHomeProfile();
     seedHomeSettings();
+    seedPersonaPreset();
     const winState = loadWindowState();
     try {
       startupAnimation = require('./startup-animation.cjs').createStartupAnimation({
