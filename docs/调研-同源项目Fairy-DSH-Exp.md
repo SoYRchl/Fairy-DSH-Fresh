@@ -19,8 +19,10 @@
 | 许可 | 仓库声明 Apache-2.0 |
 | 关键文档 | `fairy-system/PONYTAIL-DESIGN.md`（15 KB，本文主要来源）、`README.md`、`RELEASE-CHECKLIST.md`、`fairy-system/UPGRADE_COMPATIBILITY.md` |
 
-> 它**与本仓库无血缘**：目录里没有 `install.cmd` / `install_full.cmd` / `lib/settings-merge.ps1` /
-> `docs/` / `tools/` / `release/` / `VERSION`。它是从上游直接分叉后自己另起炉灶。
+> 它与本仓库**同源**（同出一脉上游 `Chengzhibense/Fairy-DSH`；其根提交 `4c1a161` 与孤舟版根提交**哈希完全相同**，
+> 本仓库根目录 tree 也与之 173/173 文件一致，仅因整合时改写 git 历史导致提交哈希不同）：
+> 目录里没有 `install.cmd` / `install_full.cmd` / `lib/settings-merge.ps1` / `docs/` / `tools/` / `release/` / `VERSION`，
+> 是**从上游直接分叉后另起炉灶做功能实验**，但其**适用功能将兼容吸收进本仓库**（并非「无血缘」）。
 
 ---
 

@@ -20,14 +20,14 @@
 ## 一、血缘与归属（请先读这一节）
 
 本项目**不是原创项目**，是 Apache-2.0 开源项目 Fairy-DSH 的下游二次开发分支。
-完整的血缘是三段（外加一支无血缘关系的平行分支）：
+完整的血缘是三段（另有同源的云朵版功能实验分支，其适用功能将兼容吸收进本仓库）：
 
 | 角色 | 作者 | 仓库 | 贡献 |
 | --- | --- | --- | --- |
 | 🍊 **原作者** | **橙汁本色**（`Chengzhibense`） | [Chengzhibense/Fairy-DSH](https://github.com/Chengzhibense/Fairy-DSH) | **Fairy 插件套件的全部原创代码**：人设语料、HDD 视觉、布局、mascot、朗读逻辑。Apache-2.0。本项目的技术地基 |
 | ⛵ **上游 fork（本仓库的直接基线）** | **孤舟蓑笠**（`Guzhou2002`） | [Guzhou2002/Fairy-DSH-Optimized](https://github.com/Guzhou2002/Fairy-DSH-Optimized) | 「孤舟版」：把上游整理成**可分发的整合包** —— `install.cmd` 一键安装、GitHub Releases + SHA256、朗读自检面板、设置栏合并、MOSS-TTS-Nano 第二朗读引擎、MOSS 一键安装脚本、新手文档。**本仓库的基线为 v0.3.8** |
 | 🍴 **本仓库（跨内核兼容版）** | **SoYRchl** | [SoYRchl/Fairy-DSH-Fresh](https://github.com/SoYRchl/Fairy-DSH-Fresh) | 在孤舟版 v0.3.8 之上修复 **`dsh` 内核换代造成的故障**：31 个兼容提交、10 类故障，双内核 feature-detection 兼容 |
-| ☁️ **平行分支（无血缘）** | `addsas222` | [addsas222/Fairy-DSH-Exp](https://github.com/addsas222/Fairy-DSH-Exp) | 「云朵版」：另一支**独立**的功能实验版（人格包引擎、多会话、多 TTS 引擎），与孤舟版 / 本仓库**无代码血缘** |
+| ☁️ **同源功能实验分支（将兼容吸收）** | `addsas222` | [addsas222/Fairy-DSH-Exp](https://github.com/addsas222/Fairy-DSH-Exp) | 「云朵版」：同源的功能实验版（人格包引擎、多会话、多 TTS 引擎等），与孤舟版 / 本仓库**同源**（同出一脉上游），其适用功能将**兼容吸收**进本仓库 |
 
 ```
 Chengzhibense/Fairy-DSH          （原创 · 橙汁本色 · Apache-2.0）
@@ -36,7 +36,7 @@ Chengzhibense/Fairy-DSH          （原创 · 橙汁本色 · Apache-2.0）
                     │
                     └── SoYRchl/Fairy-DSH-Fresh   ★ 本仓库（跨内核兼容）
 
-addsas222/Fairy-DSH-Exp          （云朵版 · 独立分支 · 与上面无血缘）
+addsas222/Fairy-DSH-Exp          （云朵版 · 同源功能实验分支 · 功能将兼容吸收进本仓库）
 ```
 
 ### ⚠️ 归属红线
@@ -48,13 +48,6 @@ addsas222/Fairy-DSH-Exp          （云朵版 · 独立分支 · 与上面无血
 - 改动遵循 Apache-2.0 §4(b)：每处对上游文件的修改都带 `[local patch 0.x.x]` 注释，逐条说明见 [`docs/本地改动.md`](docs/本地改动.md)。
 - 上游的 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` / `TRADEMARKS.md` **全部原样保留**。
 - ⚠️ **孤舟版与云朵版装的东西会互相覆盖 —— 只装一个。**
-
-### 授权说明
-
-对本仓库改动上游朗读逻辑这件事：**原作者橙汁本色已明确同意**（2026-09-13，口头授权）。
-「朗读业务逻辑不许改」原本是一条红线，本次是在获得作者同意后才动的，且 **GPT-SoVITS 原路径一个字节未改**，新增的 MOSS 引擎是**并列第二条路**而非替换。
-
----
 
 ## 二、本仓库和上游到底有什么不同
 

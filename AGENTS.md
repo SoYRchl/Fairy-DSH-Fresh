@@ -296,7 +296,7 @@ Windows 反斜杠会解析失败。另外 `link:` **不会**装依赖，只有 `
   同时存在多套 Fairy 分发，分不清就会装错、装重、互相覆盖
   - **跨内核兼容版** = 本仓库 `https://github.com/SoYRchl/Fairy-DSH-Fresh` ← **公告只推这个**
   - **孤舟版** = `https://github.com/Guzhou2002/Fairy-DSH-Optimized`（本仓库的上游基线；**新版内核下会崩，不要再引导用户装它**）
-  - **云朵版** = `https://github.com/addsas222/Fairy-DSH-Exp`（无血缘的平行分支；调研见 `docs\调研-同源项目Fairy-DSH-Exp.md`）
+  - **云朵版** = `https://github.com/addsas222/Fairy-DSH-Exp`（同源功能实验分支，其适用功能将兼容吸收进本仓库；调研见 `docs\调研-同源项目Fairy-DSH-Exp.md`）
   - ⚠️ **只装一个。** 三套装的东西会互相覆盖
 - **不写** SHA、不写分支内部术语（`link:`、`tgz`、profile、tag 一律不出现）
 - **结尾必附仓库下载链接**（永久地址）：
