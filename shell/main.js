@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------------
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, screen, shell, dialog } = require('electron');
 const { spawn, execSync, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -449,16 +449,16 @@ const SHELL_CSS = `
   }
   /* Window buttons sit in the session header gap and fade in on hover. */
   #fairy-shell-corner {
-    position: fixed; top: 10px; right: 220px; width: 160px; height: 28px;
-    z-index: 2147483001; -webkit-app-region: no-drag;
+    position: fixed; top: 6px; right: 10px; z-index: 2147483001;
+    -webkit-app-region: no-drag;
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 6px; border-radius: 9px;
+    background: rgba(14, 20, 34, .46);
+    box-shadow: inset 0 0 0 1px rgba(140, 175, 235, .18);
+    backdrop-filter: blur(4px);
   }
   #fairy-shell-controls {
-    position: absolute; top: 0; right: 0; display: flex; gap: 5px;
-    opacity: 0; transform: translateX(12px); pointer-events: none;
-    transition: opacity .18s ease, transform .18s ease;
-  }
-  #fairy-shell-corner:hover #fairy-shell-controls {
-    opacity: 1; transform: translateX(0); pointer-events: auto;
+    display: flex; gap: 6px;
   }
   .fairy-sbtn {
     width: 24px; height: 22px; border: 0; padding: 0; cursor: pointer;
@@ -479,31 +479,50 @@ const SHELL_CSS = `
 `;
 
 const SHELL_JS = `(() => {
-  if (document.getElementById('fairy-shell-corner')) return 'already';
-  const corner = document.createElement('div');
-  corner.id = 'fairy-shell-corner';
-  const box = document.createElement('div');
-  box.id = 'fairy-shell-controls';
-  const mk = (label, title, cls) => {
-    const b = document.createElement('button');
-    b.className = 'fairy-sbtn' + (cls ? ' ' + cls : '');
-    b.title = title;
-    b.textContent = label;
-    return b;
+  const GLYPH_MAX = '\\u25a1';      // □ maximize
+  const GLYPH_RESTORE = '\\u2750';  // ❐ restore
+  const syncMaxGlyph = (btn) => {
+    try {
+      window.fairyShell.isMaximized().then((m) => {
+        btn.textContent = m ? GLYPH_RESTORE : GLYPH_MAX;
+        btn.title = m ? '\\u8fd8\\u539f' : '\\u6700\\u5927\\u5316';
+      });
+    } catch {}
   };
-  const min = mk('\\u2013', '\\u6700\\u5c0f\\u5316');
-  const max = mk('\\u25a1', '\\u6700\\u5927\\u5316 / \\u8fd8\\u539f');
-  const cls = mk('\\u2715', '\\u5173\\u95ed', 'fairy-close');
-  min.onclick = (e) => { e.stopPropagation(); window.fairyShell.minimize(); };
-  max.onclick = (e) => { e.stopPropagation(); window.fairyShell.toggleMaximize(); };
-  cls.onclick = (e) => { e.stopPropagation(); window.fairyShell.close(); };
-  box.append(min, max, cls);
-  corner.appendChild(box);
-  document.body.appendChild(corner);
-
-  const strip = document.createElement('div');
-  strip.id = 'fairy-drag-strip';
-  document.body.appendChild(strip);
+  const build = () => {
+    const corner = document.createElement('div');
+    corner.id = 'fairy-shell-corner';
+    const box = document.createElement('div');
+    box.id = 'fairy-shell-controls';
+    const mk = (label, title, cls) => {
+      const b = document.createElement('button');
+      b.className = 'fairy-sbtn' + (cls ? ' ' + cls : '');
+      b.title = title; b.textContent = label; return b;
+    };
+    const min = mk('\\u2013', '\\u6700\\u5c0f\\u5316');
+    const max = mk(GLYPH_MAX, '\\u6700\\u5927\\u5316');
+    const cls = mk('\\u2715', '\\u9690\\u85cf\\u5230\\u6258\\u76d8\\uff08\\u540e\\u7aef\\u7ee7\\u7eed\\u8fd0\\u884c\\uff09', 'fairy-close');
+    min.onclick = (e) => { e.stopPropagation(); window.fairyShell.minimize(); };
+    max.onclick = (e) => {
+      e.stopPropagation();
+      window.fairyShell.toggleMaximize();
+      syncMaxGlyph(max);
+    };
+    cls.onclick = (e) => { e.stopPropagation(); window.fairyShell.close(); };
+    box.append(min, max, cls);
+    corner.appendChild(box);
+    document.body.appendChild(corner);
+    const strip = document.createElement('div');
+    strip.id = 'fairy-drag-strip';
+    document.body.appendChild(strip);
+    syncMaxGlyph(max);
+  };
+  if (!document.getElementById('fairy-shell-corner')) build();
+  // DSH is a SPA; if it ever replaces <body>'s children, restore the chrome.
+  const observer = new MutationObserver(() => {
+    if (!document.getElementById('fairy-shell-corner')) build();
+  });
+  observer.observe(document.body, { childList: true });
   return 'injected';
 })();`;
 
@@ -745,11 +764,108 @@ function createWindow(state) {
   mainWindow.on('restore', syncMaximizedFromGeometry);
   mainWindow.on('move', () => saveWindowState(mainWindow, isMaximized));
   mainWindow.on('resize', () => saveWindowState(mainWindow, isMaximized));
+  // Closing the window hides to tray (backend keeps running); only the tray
+  // "exit" item sets quitting=true and lets the window actually close.
+  mainWindow.on('close', (event) => {
+    if (!quitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      return;
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     // A detached splash must not keep the backend/app alive.
     if (startupAnimation) startupAnimation.dispose();
   });
+}
+
+// --- system tray (phase 2-C follow-up: see status report) -------------------------
+// The app must survive after its window is closed so the tray can manage the
+// backend. Closing the window therefore HIDES to tray (backend keeps running);
+// only the tray "exit" item stops the backend and quits.
+let tray = null;
+
+function resolveIcon() {
+  const local = path.join(__dirname, 'fairy-eye.ico');
+  if (fs.existsSync(local)) return local;
+  const repoAsset = path.join(REPO, 'tools', 'assets', 'fairy-eye.ico');
+  return fs.existsSync(repoAsset) ? repoAsset : undefined;
+}
+
+function showMainWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function restartBackend() {
+  if (!ownedBackendPid) return;
+  stopDsh();
+  backendReady = false;
+  backendFailure = null;
+  backendUrl = null;
+  startDsh();
+  waitForPort(PORT).then((ok) => {
+    if (!ok) { shellLog('[restart] backend did not come back'); return; }
+    backendReady = true;
+    if (mainWindow && !mainWindow.isDestroyed() && backendUrl) {
+      mainWindow.loadURL(backendUrl).catch(() => {});
+    }
+    if (tray) tray.setContextMenu(buildTrayMenu());
+  }).catch((error) => shellLog(`[restart] ${error && error.message}`));
+}
+
+function trayBackendLabel() {
+  if (backendFailure) return '后端已退出';
+  if (backendReady) return `后端运行中 · 端口 ${PORT}`;
+  return '启动中…';
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: '打开 Fairy', click: showMainWindow },
+    {
+      label: '隐藏到托盘',
+      click: () => { if (mainWindow) mainWindow.hide(); },
+    },
+    { type: 'separator' },
+    { label: trayBackendLabel(), enabled: false },
+    {
+      label: '重启后端',
+      enabled: !!ownedBackendPid,
+      click: restartBackend,
+    },
+    { type: 'separator' },
+    {
+      label: '退出（停止后端）',
+      click: () => { quitting = true; app.quit(); },
+    },
+  ]);
+}
+
+function createTray() {
+  const icon = resolveIcon();
+  if (!icon) { shellLog('[tray] no icon available, skipped'); return; }
+  try {
+    tray = new Tray(icon);
+    tray.setToolTip(`Fairy-DSH-Fresh · ${PORT}`);
+    tray.setContextMenu(buildTrayMenu());
+    // Left click toggles the window; right click shows the menu (default on Win).
+    tray.on('click', () => {
+      if (mainWindow && mainWindow.isVisible() && !mainWindow.isMinimized()) {
+        mainWindow.hide();
+      } else {
+        showMainWindow();
+      }
+    });
+    tray.on('right-click', () => { if (tray) tray.setContextMenu(buildTrayMenu()); });
+  } catch (error) {
+    shellLog(`[tray] failed: ${error && error.message}`);
+    tray = null;
+  }
 }
 
 // --- IPC ---------------------------------------------------------------------------
@@ -783,10 +899,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => {
     if (startupAnimation && startupAnimation.focus()) return;
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    showMainWindow();
   });
 
   app.whenReady().then(async () => {
@@ -833,12 +946,16 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return;
     backendReady = true;
     createWindow(winState);
+    createTray();
+    if (tray) tray.setContextMenu(buildTrayMenu());
   }).catch(failShell);
 
   app.on('window-all-closed', () => {
-    quitting = true;
-    stopDsh();
-    app.quit();
+    // With hide-to-tray the window stays alive; only quit when we mean to.
+    if (quitting) {
+      stopDsh();
+      app.quit();
+    }
   });
 
   app.on('before-quit', () => {
