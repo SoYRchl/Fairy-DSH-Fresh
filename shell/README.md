@@ -10,6 +10,7 @@ Electron 桌面壳：双击即用、无黑窗口、关窗即停后端。按「�
 ```
 <root>/Fairy-DSH-Fresh.exe          官方 electron.exe 改名
 <root>/resources/app/               本目录的壳文件（package.json main.js …）
+<root>/resources/app/media/         启动视频（用户批准复用参考包媒体资产，D-052）
 <root>/resources/runtime/node.exe   官方 Node 22（后端专用，Electron 内置
                                     Node 24 解析不了 rc.2 插件，见 04 §1）
 <root>/resources/kernel/node_modules/   @deepseek-ai/dsh 0.2.0-rc.2
@@ -21,6 +22,13 @@ Electron 桌面壳：双击即用、无黑窗口、关窗即停后端。按「�
 Files）→ 自动落 `%LOCALAPPDATA%\Fairy-DSH-Fresh`。zip 解压会丢 junction，
 首启由 `tools/restore-link-deps.mjs --apply` + `bless-build-mtimes.mjs --apply`
 自动重建（幂等，每次启动都跑，代价秒级）。
+
+首启还有两件自动事（都是 D-052 的教训）：
+1. **`<home>/profiles/web` → 仓 profile 的 junction**——内核解析活动 profile
+   只认 `<home>/profiles/<名>`，全新 home 不建它就会被内核自举成**裸
+   profile**（零 bundle，用户看到的就是「插件全没启用」）；
+2. **`settings.yaml.imported` 通用种子**——只压欢迎通知 + HDD 视觉默认开
+   （`fairy-visual.enabled: true`），不含任何凭据；凭据首启走引导页。
 
 ## 文件
 

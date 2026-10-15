@@ -33,6 +33,11 @@ const SHELL_FILES = [
   'startup.html', 'startup.css', 'startup.js',
   'verify/observe.mjs',
 ];
+const SHELL_BINARY_ASSETS = [
+  // The bundled startup video: user-approved reuse of the reference package's
+  // media asset (inert data, decision D-052). Must exist for the splash.
+  'media/startup-default.mp4',
+];
 const PACK_FILES = [
   'tools/pack-shell.mjs', 'tools/pack/installer.nsi',
 ];
@@ -128,6 +133,20 @@ test('shell: startup gate keeps its safety properties', () => {
   assert.ok(anim.includes('did-fail-load'), 'failed load must release');
   // splash close = skip, not quit (hidden, so window-all-closed never fires early)
   assert.ok(anim.includes('event.preventDefault()'), 'close is hide+release');
+  // video parity with the reference: module owns its IPC channels and plays
+  // the bundled media; the fallback path exists for playback failure
+  assert.ok(anim.includes("'startup:playback-finished'"), 'playback-finished IPC');
+  assert.ok(anim.includes('startup-default.mp4'), 'bundled video is the default source');
+  for (const f of SHELL_BINARY_ASSETS) {
+    assert.ok(existsSync(join(SHELL, f)), `missing shell/${f}`);
+  }
+});
+
+test('shell: first-run home preparation exists (profile junction + generic seed)', () => {
+  const main = read(join(SHELL, 'main.js'));
+  assert.ok(main.includes("'junction'") && main.includes("homeProfile"),
+    'home profile junction (bare profile = no plugins, the D-052 bug)');
+  assert.ok(main.includes('settings.yaml.imported'), 'generic first-run seed');
 });
 
 test('shell: verify harness closes gracefully (WM_CLOSE, not /F)', () => {

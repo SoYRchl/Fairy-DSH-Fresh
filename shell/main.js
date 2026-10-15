@@ -242,6 +242,59 @@ function runRecovery() {
   return ok;
 }
 
+// --- first-run home preparation ----------------------------------------------
+// The kernel resolves its ACTIVE profile at <home>/profiles/<name>. On a
+// fresh home it materializes a BARE profile there (no bundles -> no plugins,
+// which users read as "nothing works"). The profile must be a junction into
+// the packaged repo instead -- the same setup the dev launcher used to do
+// manually. Also seed generic first-run preferences (no credentials: a fresh
+// home intentionally ships none and shows the API-key onboarding).
+function ensureHomeProfile() {
+  const repoProfile = path.join(REPO, 'profiles', 'web');
+  if (!fs.existsSync(repoProfile)) {
+    throw new Error(`\u4ed3\u5185 profile \u7f3a\u5931\uff1a${repoProfile}`);
+  }
+  const homeProfiles = path.join(HOME, 'profiles');
+  const homeProfile = path.join(homeProfiles, 'web');
+  fs.mkdirSync(homeProfiles, { recursive: true });
+  const link = () => fs.symlinkSync(repoProfile, homeProfile, 'junction');
+  const st = fs.lstatSync(homeProfile, { throwIfNoEntry: false });
+  if (!st) {
+    link();
+    return;
+  }
+  if (st.isSymbolicLink()) {
+    // Wrong target (moved install)? Repair; otherwise leave untouched.
+    try {
+      if (fs.realpathSync(homeProfile).toLowerCase()
+        === fs.realpathSync(repoProfile).toLowerCase()) return;
+    } catch {}
+    fs.unlinkSync(homeProfile);
+    link();
+    return;
+  }
+  // A bare profile dir from a previous broken run: replace it (it is tiny).
+  fs.rmSync(homeProfile, { recursive: true, force: true });
+  link();
+  shellLog('[home] replaced the bare home profile with a junction to the repo profile');
+}
+
+function seedHomeSettings() {
+  const seedFile = path.join(HOME, 'settings.yaml.imported');
+  if (fs.existsSync(seedFile)) return;
+  // Generic defaults only: suppress the welcome notice and switch the HDD
+  // visuals on for a first run (mirrors the reference package's seed).
+  fs.writeFileSync(seedFile, [
+    'ui-onboarding:',
+    '  welcomeNoticeVersion: 2026-08-13.1',
+    'fairy-visual:',
+    '  enabled: true',
+    '  mascotVisible: false',
+    '',
+  ].join('\r\n'), 'ascii');
+  shellLog('[home] seeded settings.yaml.imported');
+}
+
 // --- backend lifecycle ---------------------------------------------------------
 function backendEnv() {
   const env = {
@@ -691,7 +744,6 @@ ipcMain.on('shell:toggle-maximize', () => {
   else maximizeShell();
 });
 ipcMain.handle('shell:is-maximized', () => isMaximized);
-ipcMain.on('startup:dismiss', () => startupAnimation && startupAnimation.dismiss());
 
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 
@@ -745,10 +797,12 @@ if (!app.requestSingleInstanceLock()) {
     if (!runRecovery()) {
       throw new Error('\u63d2\u4ef6\u94fe\u63a5\u4fee\u590d\u5931\u8d25\uff08restore-link-deps\uff09\uff0c\u8be6\u89c1 shell.log\u3002');
     }
+    ensureHomeProfile();
+    seedHomeSettings();
     const winState = loadWindowState();
     try {
       startupAnimation = require('./startup-animation.cjs').createStartupAnimation({
-        app, BrowserWindow, ipcMain, screen, getMainWindow: () => mainWindow,
+        app, BrowserWindow, ipcMain, getMainWindow: () => mainWindow,
       });
       startupAnimation.open(winState.bounds);
     } catch (error) {

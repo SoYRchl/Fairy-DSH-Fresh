@@ -1,28 +1,43 @@
-/* Startup splash (phase 2-C: CSS-only). Dark, quiet, one breathing eye.
-   Clicking anywhere skips the animation (same contract as the close button). */
+/* Startup splash (phase 2-C parity): the bundled video fills the frame,
+   with a text fallback and a footer status bar (title / status / skip). */
 html, body {
   margin: 0;
   height: 100%;
-  background: transparent;
+  background: #05090d;
   overflow: hidden;
   user-select: none;
   cursor: default;
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-#fairy-splash {
+main {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 90% at 50% 30%, #0a1420 0%, #05090d 58%, #030507 100%);
+}
+#animation {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: cover;
+}
+#fallback {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 26px;
-  background: radial-gradient(120% 90% at 50% 30%, #0a1420 0%, #05090d 58%, #030507 100%);
+  gap: 22px;
+  color: #6f8aa6;
+  font-size: 14px;
 }
 .eye {
-  position: relative;
   width: 148px;
   height: 148px;
   border-radius: 50%;
+  display: grid;
+  place-items: center;
   background: radial-gradient(circle at 38% 34%, #1d3a54 0%, #0e1f31 55%, #081219 100%);
   box-shadow:
     0 0 0 2px rgba(126, 178, 226, .22),
@@ -30,40 +45,46 @@ html, body {
     inset 0 0 26px rgba(0, 0, 0, .55);
   animation: breathe 3.2s ease-in-out infinite;
 }
-.iris {
-  position: absolute;
-  inset: 34px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 42% 38%, #9fd4ff 0%, #4d9fdd 42%, #1d5d8f 78%, #123c60 100%);
-  box-shadow: inset 0 0 14px rgba(6, 20, 34, .8);
-}
-.glint {
-  position: absolute;
-  left: 52px;
-  top: 46px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: rgba(233, 246, 255, .85);
-  filter: blur(1px);
-}
-.wordmark {
-  color: #c9dcf0;
+.eye span {
+  color: #9fc6e8;
+  letter-spacing: 6px;
   font-size: 20px;
-  letter-spacing: 4px;
   font-weight: 300;
 }
-.status {
-  color: #6f8aa6;
-  font-size: 13px;
-  letter-spacing: 2px;
-  animation: status-pulse 2.2s ease-in-out infinite;
-}
 @keyframes breathe {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 2px rgba(126, 178, 226, .22), 0 0 42px rgba(80, 150, 210, .28), inset 0 0 26px rgba(0, 0, 0, .55); }
-  50% { transform: scale(1.035); box-shadow: 0 0 0 2px rgba(126, 178, 226, .30), 0 0 62px rgba(90, 165, 225, .40), inset 0 0 26px rgba(0, 0, 0, .55); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
 }
-@keyframes status-pulse {
-  0%, 100% { opacity: .55; }
-  50% { opacity: 1; }
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 22px;
+  background: rgba(4, 8, 13, .72);
+}
+footer strong {
+  display: block;
+  color: #c9dcf0;
+  font-size: 13px;
+  letter-spacing: 3px;
+  font-weight: 500;
+}
+footer p {
+  margin: 2px 0 0;
+  color: #6f8aa6;
+  font-size: 12px;
+}
+#skip {
+  border: 1px solid rgba(126, 178, 226, .35);
+  background: rgba(22, 30, 46, .55);
+  color: #c3d2e8;
+  font-size: 12px;
+  padding: 5px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+#skip:hover {
+  background: rgba(48, 66, 100, .85);
+  color: #ffffff;
 }

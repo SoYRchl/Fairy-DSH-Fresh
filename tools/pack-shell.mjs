@@ -137,6 +137,11 @@ for (const f of [
 ]) {
   fs.copyFileSync(path.join(repoRoot, 'shell', f), path.join(appDir, f));
 }
+// Bundled startup video (user-approved reuse of the reference package's media
+// asset -- inert data, no executable content; decision D-052).
+fs.mkdirSync(path.join(appDir, 'media'), { recursive: true });
+fs.copyFileSync(path.join(repoRoot, 'shell', 'media', 'startup-default.mp4'),
+  path.join(appDir, 'media', 'startup-default.mp4'));
 fs.copyFileSync(path.join(repoRoot, 'tools', 'assets', 'fairy-eye.ico'),
   path.join(appDir, 'fairy-eye.ico'));
 
