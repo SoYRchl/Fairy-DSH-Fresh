@@ -24,6 +24,19 @@ import {
   createTtsProviderRegistry,
   normalizeProvider,
 } from '../providers/tts-index.js';
+/* [T-130 · 云朵版兼容吸收] STT provider 注册表：与 TTS 同脚手架，但配置单独放在
+ * config.stt 分区（不与 TTS 的顶层 providers 撞键）。默认 browser（浏览器端开箱即用）。 */
+import {
+  BROWSER_STT_ID,
+  DEFAULT_STT_PROVIDER_ID,
+  STT_PROVIDER_CONFIG_FIELDS,
+  STT_PROVIDER_IDS,
+  WHISPER_WEB_STT_ID,
+  configForSttProvider,
+  configKeyForSttProvider,
+  createSttProviderRegistry,
+  normalizeSttProvider,
+} from '../providers/stt-index.js';
 import { readFileSync, statSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -170,10 +183,26 @@ function readStoredProviders() {
   }
 }
 
+/** [T-130] 配置文件里**原样**存着的 stt 分区（不含默认值），供保存时做增量合并。 */
+function readStoredStt() {
+  try {
+    const value = JSON.parse(readFileSync(RUNTIME_CONFIG_PATH, 'utf8'))?.stt;
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
 /** 某个 provider 的分区配置（默认值 ← 旧字段 ← 分区里存的值）。 */
 function providersSectionFor(id, stored = {}) {
   const merged = configForProvider(id, stored);
   return { key: configKeyForProvider(id), ...merged };
+}
+
+/** [T-130] 某个 STT provider 的分区配置视图（默认值 ← 分区里存的值）。 */
+function providersSttSectionFor(id, stored = {}) {
+  const merged = configForSttProvider(id, stored);
+  return { key: configKeyForSttProvider(id), ...merged };
 }
 
 /** 当前生效的运行时配置（文件 → 默认值）。 */
@@ -233,6 +262,15 @@ export function readRuntimeConfig() {
     defaultMossBase: DEFAULT_MOSS_BASE,
     defaultReferenceAudioPath: resolveDefaultReferenceAudioPath(),
     fileProblem,
+    /* [T-130] STT 视图：provider 是当前选中的 id，sttProviders 是各 provider 的分区配置
+     * （已与默认值合并）。UI 与端点都从这里读，不自己拼。配置独立放在 `stt` 分区。 */
+    sttProvider: normalizeSttProvider(stored?.stt?.provider),
+    sttProviderIds: [...STT_PROVIDER_IDS],
+    sttProviderFields: STT_PROVIDER_CONFIG_FIELDS,
+    sttProviders: Object.fromEntries(
+      STT_PROVIDER_IDS.map((id) => [configKeyForSttProvider(id), providersSttSectionFor(id, stored)]),
+    ),
+    sttConfigured: stored?.stt != null,
   };
 }
 
@@ -332,6 +370,29 @@ export async function saveRuntimeConfig(input = {}) {
       nextProviders[key] = { ...(nextProviders[key] || {}), ...value };
     }
   }
+  /* [T-130] stt 分区：同样的增量合并原则。stt.provider 缺省时沿用已存值，
+   * 仅在「显式指明且与默认不同」或「写了任一 provider 分区」时才把 stt 落盘，
+   * 避免把默认值灌进配置文件。 */
+  const sttInput = input.stt && typeof input.stt === 'object' ? input.stt : null;
+  const requestedSttProvider = input.sttProvider !== undefined
+    ? input.sttProvider
+    : (sttInput?.provider !== undefined ? sttInput.provider : undefined);
+  const sttProvider = requestedSttProvider === undefined
+    ? normalizeSttProvider(current.sttProvider)
+    : normalizeSttProvider(requestedSttProvider);
+  const sttProvidersInput = sttInput?.providers && typeof sttInput.providers === 'object' ? sttInput.providers : null;
+  const nextSttProviders = { ...readStoredStt().providers };
+  if (sttProvidersInput) {
+    for (const [key, value] of Object.entries(sttProvidersInput)) {
+      if (!value || typeof value !== 'object') continue;
+      nextSttProviders[key] = { ...(nextSttProviders[key] || {}), ...value };
+    }
+  }
+  const nextStt = {};
+  if (sttProvider !== DEFAULT_STT_PROVIDER_ID || Object.keys(nextSttProviders).length > 0) {
+    nextStt.provider = sttProvider;
+    if (Object.keys(nextSttProviders).length > 0) nextStt.providers = nextSttProviders;
+  }
   await writeJsonPrivate(RUNTIME_CONFIG_PATH, {
     version: 3,
     engine,
@@ -339,6 +400,7 @@ export async function saveRuntimeConfig(input = {}) {
     sovitsBase,
     mossBase,
     ...(Object.keys(nextProviders).length > 0 ? { providers: nextProviders } : {}),
+    ...(Object.keys(nextStt).length > 0 ? { stt: nextStt } : {}),
     referenceAudioPath: rawAudio === '' ? DEFAULT_REFERENCE_AUDIO_PATH : rawAudio,
   });
   return { ok: true, config: readRuntimeConfig() };
@@ -359,6 +421,31 @@ export function buildTtsTransport(config, deps = {}) {
     providerId: selection.id,
     status: (signal) => provider.status(providerConfig, { signal }),
     stream: (text, signal) => provider.stream(text, providerConfig, { signal }),
+  };
+}
+
+/** [T-130] 用当前配置构造一次性的 STT 传输层（改了设置不用重启）。
+ * 对外形状：providerId / status / transcribe / isClientSide。 */
+export function buildSttTransport(config, deps = {}) {
+  const { fetchImpl = fetch, availabilityTimeoutMs = 3_000 } = deps;
+  const registry = createSttProviderRegistry({ fetchImpl, availabilityTimeoutMs });
+  const selection = registry.resolve(config);
+  const provider = selection.provider || registry.PROVIDERS.get(DEFAULT_STT_PROVIDER_ID);
+  const providerConfig = selection.config || {};
+  /* 纯客户端 provider（browser / whisper-web）的 transcribe 会主动带 client-side 错误码，
+   * 这里把判定提前到传输层，端点层据此答 409 而不尝试网络。 */
+  const isClientSide = selection.id === BROWSER_STT_ID || selection.id === WHISPER_WEB_STT_ID;
+  return {
+    providerId: selection.id,
+    isClientSide,
+    status: (signal) => provider.status(providerConfig, { signal }),
+    transcribe: (audio, contentType, language, signal) => provider.transcribe({
+      audio,
+      contentType,
+      language,
+      config: providerConfig,
+      signal,
+    }),
   };
 }
 

@@ -1575,6 +1575,168 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       }, readMode, readMode);
     }
 
+    /* [T-130] 语音输入控制器：麦克风按钮。
+     *   · 浏览器端 provider（browser / whisper-web）→ 直接用浏览器 Web Speech API 识别；
+     *   · 服务端 provider（openai / deepgram / azure / custom-http）→ 录音后 POST 到
+     *     /fairy-voice/stt，由宿主转发到对应服务。
+     * 识别结果回填到对话输入框（受控输入值 setter + input 事件，跨 DSH 版本最稳）。
+     * 当前 STT provider 取自 /fairy-voice/config 的 sttProvider 字段。 */
+    function insertIntoComposer(text) {
+      try {
+        const el = document.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+        if (!el) return false;
+        if (el.isContentEditable) {
+          el.focus();
+          document.execCommand('insertText', false, text);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        }
+        const proto = el.tagName === 'TEXTAREA'
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(el, `${el.value}${text}`);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.focus();
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function FairySttMicIcon({ active }) {
+      // 内联 SVG，避免依赖图标包的导出名（0.2.0 重命名过，见顶部兼容补丁）。
+      return jsx.jsx('svg', {
+        width: 16, height: 16, viewBox: '0 0 24 24', fill: active ? '#e74c3c' : 'currentColor',
+        'aria-hidden': true, children: jsx.jsx('path', {
+          d: 'M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z',
+        }),
+      });
+    }
+
+    function FairySttController(props) {
+      const [config, setConfig] = React.useState(null);
+      const [busy, setBusy] = React.useState(false);
+      const [error, setError] = React.useState('');
+      const mediaRef = React.useRef(null);
+      const recognitionRef = React.useRef(null);
+      const provider = (config && config.sttProvider) || 'browser';
+
+      React.useEffect(() => {
+        let alive = true;
+        fetch('/fairy-voice/config')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((c) => { if (alive && c) setConfig(c); })
+          .catch((error) => {
+            // 配置拉取失败只影响「选中的识别方式」推断（缺省退到浏览器端），
+            // 不阻断麦克风按钮本身；按项目约定分类记录，但不静默吞掉。
+            reportAudioLifecycleFailure('stt config load', error);
+          });
+        return () => { alive = false; };
+      }, []);
+
+      React.useEffect(() => () => {
+        // 卸载时清理：停录音 / 停识别。stop 在「未录制态」会抛 InvalidStateError，
+        // 这里用状态守护代替 try/catch —— 只有确实在录才停，避免静默吞错（契约 test 11）。
+        if (mediaRef.current && mediaRef.current.state === 'recording') mediaRef.current.stop();
+        if (recognitionRef.current) recognitionRef.current.stop();
+        mediaRef.current = null;
+        recognitionRef.current = null;
+      }, []);
+
+      const stopAll = () => {
+        if (mediaRef.current && mediaRef.current.state === 'recording') mediaRef.current.stop();
+        if (recognitionRef.current) recognitionRef.current.stop();
+        mediaRef.current = null;
+        recognitionRef.current = null;
+        setBusy(false);
+      };
+
+      const startBrowserRecognition = () => {
+        const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!Ctor) { setError('当前浏览器不支持语音输入。'); return; }
+        const rec = new Ctor();
+        rec.lang = (config?.sttProviders?.browser?.lang) || 'zh-CN';
+        rec.interimResults = false;
+        rec.continuous = false;
+        recognitionRef.current = rec;
+        setBusy(true);
+        setError('');
+        rec.onresult = (event) => {
+          const text = Array.from(event.results)
+            .map((r) => r[0].transcript)
+            .join('');
+          if (text) insertIntoComposer(text);
+        };
+        rec.onerror = (e) => { setError(`语音识别出错：${e?.error || '未知'}`); setBusy(false); };
+        rec.onend = () => { if (recognitionRef.current === rec) setBusy(false); };
+        try { rec.start(); } catch { setError('无法启动语音识别。'); setBusy(false); }
+      };
+
+      const startServerRecording = async () => {
+        if (!navigator.mediaDevices?.getUserMedia) { setError('当前环境无法访问麦克风。'); return; }
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch {
+          setError('麦克风权限被拒绝。');
+          return;
+        }
+        const mimeType = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm'))
+          ? 'audio/webm'
+          : '';
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        const chunks = [];
+        recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        recorder.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+          if (blob.size === 0) { setBusy(false); return; }
+          try {
+            const buf = await blob.arrayBuffer();
+            const resp = await fetch(`/fairy-voice/stt?lang=${(config?.sttProviders?.[provider]?.language) || ''}`, {
+              method: 'POST',
+              headers: { 'Content-Type': blob.type || 'audio/webm' },
+              body: buf,
+            });
+            if (resp.status === 409) { setError('该识别方式需在浏览器内完成，请改用「浏览器」识别。'); setBusy(false); return; }
+            const data = await resp.json().catch(() => ({}));
+            if (data?.text) insertIntoComposer(data.text);
+            else setError(data?.error?.message || '识别失败。');
+          } catch {
+            setError('识别请求失败。');
+          } finally {
+            setBusy(false);
+          }
+        };
+        mediaRef.current = recorder;
+        recorder.start();
+        setBusy(true);
+        setError('');
+      };
+
+      const onToggle = () => {
+        if (busy) { stopAll(); return; }
+        const isBrowserSide = provider === 'browser' || provider === 'whisper-web';
+        if (isBrowserSide) startBrowserRecognition();
+        else startServerRecording();
+      };
+
+      const label = busy ? '停止语音输入' : '语音输入';
+      return jsx.jsx('button', {
+        type: 'button',
+        onClick: onToggle,
+        'aria-label': label,
+        title: error || label,
+        style: {
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 32, height: 32, padding: 0, margin: '0 4px',
+          border: 'none', borderRadius: 8, background: 'transparent', cursor: 'pointer', color: '#555',
+        },
+        children: jsx.jsx(FairySttMicIcon, { active: busy }),
+      });
+    }
+
     function SessionScopedVoiceController(props) {
       // [compat patch] Upstream gates this slot on the visual-mode attribute
       // (html[data-dsh-fairy-visual]) — with Fairy visual disabled the voice
@@ -1718,6 +1880,7 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       }, 'dsh-fairy-voice session lifecycle');
       const slotDisposers = [
         injectVoiceSlot(ctx, 'conversation.input.left', { name: 'conversation.input.left', id: 'fairy-voice-controller', order: 40 }, SessionScopedVoiceController),
+        injectVoiceSlot(ctx, 'conversation.input.left', { name: 'conversation.input.left', id: 'fairy-voice-stt', order: 41 }, FairySttController),
         injectVoiceSlot(ctx, 'conversation.chat.assistant-actions', { id: 'fairy-voice-message-action', order: 20 }, MessageAction),
         // [local patch 0.2.0] 设置入口已并入 fairy-visual 的单个 Fairy 设置栏
       ].filter((dispose) => typeof dispose === 'function');

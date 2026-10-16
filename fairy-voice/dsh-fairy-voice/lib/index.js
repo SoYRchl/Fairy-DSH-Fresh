@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { createPcmStreamHandler } from './server/local-tts-proxy.js';
 import {
   applyConfigOverrides,
+  buildSttTransport,
   buildTtsTransport,
   ensureFairyDirectories,
   readRuntimeConfig,
@@ -393,6 +394,17 @@ async function readJson(req, maxBytes = 300_000) {
   }
 }
 
+async function readRawBytes(req, maxBytes = 25_000_000) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw new Error('payload-too-large');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 function publicError(code) {
   const messages = {
     'empty-text': 'Text is required.',
@@ -673,6 +685,41 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
         scope.cancel('request-complete');
       }
     },
+    // [T-130] 语音识别：客户端把录音以原始字节 POST 上来（Content-Type 标 MIME，
+    // ?lang= 标口语语言）。纯客户端 provider（browser / whisper-web）答 409，
+    // 让客户端改用浏览器那一半识别。
+    stt: async (req, res) => {
+      const startedAt = diagnostics.start();
+      let releaseUpstream = null;
+      try {
+        const contentType = String(req.headers['content-type'] || 'audio/webm').split(';')[0].trim();
+        let language = '';
+        try {
+          const url = new URL(req.url ?? '/', 'http://x');
+          language = String(url.searchParams.get('lang') || '').trim();
+        } catch { /* 没有 query 就用空语言（provider 退到自己的默认） */ }
+        const audio = await readRawBytes(req);
+        if (audio.length === 0) throw Object.assign(new Error('empty-audio'), { code: 'empty-audio' });
+        const transport = buildSttTransport(readRuntimeConfig(), { fetchImpl });
+        if (transport.isClientSide) {
+          sendJson(res, 409, { clientSide: true, id: transport.providerId });
+          return;
+        }
+        const result = await transport.transcribe(audio, contentType, language, undefined);
+        const text = typeof result?.text === 'string' ? result.text : '';
+        if (!text.trim()) throw Object.assign(new Error('empty-result'), { code: 'empty-result' });
+        sendJson(res, 200, { text: text.trim() });
+      } catch (error) {
+        const code = error?.code || 'stt-failed';
+        const message = String(error?.message || code);
+        // 客户端 provider 不应到这里；若到了，翻成人话。
+        if (!res.writableEnded) sendJson(res, code === 'empty-audio' ? 400 : 502, { error: { code, message } });
+        if (!['client-side', 'empty-audio'].includes(code)) diagnostics.warn('stt.transcribe', { code }, error);
+      } finally {
+        diagnostics.metric('stt.transcribe', startedAt, {}, { thresholdMs: 100 });
+        releaseUpstream?.();
+      }
+    },
     // [local patch 0.2.3] 读取/保存 SoVITS 地址与参考音频路径（不含任何密钥）。
     // [local patch 0.3.2] 新增 engine / base 字段：读走 readRuntimeConfig()、写走 saveRuntimeConfig()，
     // 两者都已认得新字段，所以这里不需要额外分支 —— 请求体整体透传即可。
@@ -818,6 +865,7 @@ export function apply(ctx) {
     const unregisterBrainBrief = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/brief', handler: handlers.voiceBrief });
     const unregisterConfig = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/config', handler: handlers.config });
     const unregisterSelfCheck = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/selfcheck', handler: handlers.selfcheck });
+    const unregisterStt = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/stt', handler: handlers.stt });
     const unregisterUpdateStatus = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/update/status', handler: handlers.updateStatus });
     const unregisterUpdateCache = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/update/cache', handler: handlers.updateCache });
     return () => {
@@ -830,6 +878,7 @@ export function apply(ctx) {
       unregisterBrainBrief?.();
       unregisterConfig?.();
       unregisterSelfCheck?.();
+      unregisterStt?.();
       unregisterUpdateStatus?.();
       unregisterUpdateCache?.();
     };
