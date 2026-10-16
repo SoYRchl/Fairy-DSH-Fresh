@@ -479,13 +479,13 @@ const SHELL_CSS = `
 `;
 
 const SHELL_JS = `(() => {
-  const GLYPH_MAX = '\\u25a1';      // maximize glyph (box)
-  const GLYPH_RESTORE = '\\u2750';  // restore glyph
+  const GLYPH_MAX = '\u25a1';      // maximize glyph (box)
+  const GLYPH_RESTORE = '\u2750';  // restore glyph
   const syncMaxGlyph = (btn) => {
     try {
       window.fairyShell.isMaximized().then((m) => {
         btn.textContent = m ? GLYPH_RESTORE : GLYPH_MAX;
-        btn.title = m ? '\\u8fd8\\u539f' : '\\u6700\\u5927\\u5316';
+        btn.title = m ? '\u8fd8\u539f' : '\u6700\u5927\u5316';
       });
     } catch {}
   };
@@ -499,9 +499,9 @@ const SHELL_JS = `(() => {
       b.className = 'fairy-sbtn' + (cls ? ' ' + cls : '');
       b.title = title; b.textContent = label; return b;
     };
-    const min = mk('\\u2013', '\\u6700\\u5c0f\\u5316');
-    const max = mk(GLYPH_MAX, '\\u6700\\u5927\\u5316');
-    const cls = mk('\\u2715', '\\u9690\\u85cf\\u5230\\u6258\\u76d8\\uff08\\u540e\\u7aef\\u7ee7\\u7eed\\u8fd0\\u884c\\uff09', 'fairy-close');
+    const min = mk('\u2013', '\u6700\u5c0f\u5316');
+    const max = mk(GLYPH_MAX, '\u6700\u5927\u5316');
+    const cls = mk('\u2715', '\u9690\u85cf\u5230\u6258\u76d8\uff08\u540e\u7aef\u7ee7\u7eed\u8fd0\u884c\uff09', 'fairy-close');
     min.onclick = (e) => { e.stopPropagation(); window.fairyShell.minimize(); };
     max.onclick = (e) => {
       e.stopPropagation();
@@ -819,9 +819,9 @@ function restartBackend() {
 }
 
 function trayBackendLabel() {
-  if (backendFailure) return '\\u540e\\u7aef\\u5df2\\u9000\\u51fa';
-  if (backendReady) return `\\u540e\\u7aef\\u8fd0\\u884c\\u4e2d \\u00b7 \\u7aef\\u53e3 ${PORT}`;
-  return '\\u542f\\u52a8\\u4e2d\\u2026';
+  if (backendFailure) return '\u540e\u7aef\u5df2\u9000\u51fa';
+  if (backendReady) return `\u540e\u7aef\u8fd0\u884c\u4e2d \u00b7 \u7aef\u53e3 ${PORT}`;
+  return '\u542f\u52a8\u4e2d\u2026';
 }
 
 /* --- Auto-start (D-058) -----------------------------------------------------
@@ -855,22 +855,22 @@ function setAutostart(enabled) {
 
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
-    { label: '\\u6253\\u5f00 Fairy', click: showMainWindow },
+    { label: '\u6253\u5f00 Fairy', click: showMainWindow },
     {
-      label: '\\u9690\\u85cf\\u5230\\u6258\\u76d8',
+      label: '\u9690\u85cf\u5230\u6258\u76d8',
       click: () => { if (mainWindow) mainWindow.hide(); },
     },
     { type: 'separator' },
     { label: trayBackendLabel(), enabled: false },
     {
-      label: '\\u91cd\\u542f\\u540e\\u7aef',
+      label: '\u91cd\u542f\u540e\u7aef',
       enabled: !!ownedBackendPid,
       click: restartBackend,
     },
     { type: 'separator' },
     {
       // D-058: opt-in only; unchecked on first run.
-      label: '\\u5f00\\u673a\\u81ea\\u542f',
+      label: '\u5f00\u673a\u81ea\u542f',
       type: 'checkbox',
       checked: isAutostartEnabled(),
       click: (item) => {
@@ -880,7 +880,7 @@ function buildTrayMenu() {
     },
     { type: 'separator' },
     {
-      label: '\\u9000\\u51fa\\uff08\\u505c\\u6b62\\u540e\\u7aef\\uff09',
+      label: '\u9000\u51fa\uff08\u505c\u6b62\u540e\u7aef\uff09',
       click: () => { quitting = true; app.quit(); },
     },
   ]);
@@ -891,7 +891,7 @@ function createTray() {
   if (!icon) { shellLog('[tray] no icon available, skipped'); return; }
   try {
     tray = new Tray(icon);
-    tray.setToolTip(`Fairy-DSH-Fresh \\u00b7 ${PORT}`);
+    tray.setToolTip(`Fairy-DSH-Fresh \u00b7 ${PORT}`);
     tray.setContextMenu(buildTrayMenu());
     // Left click toggles the window; right click shows the menu (default on Win).
     tray.on('click', () => {
