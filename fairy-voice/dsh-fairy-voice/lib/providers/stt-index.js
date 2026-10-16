@@ -10,8 +10,9 @@
  *   / `stt.provider`，避免两套键互相覆盖（D-065 的教训：读出一套键、写进另一套键会静默失效）。
  *
  * ★ id 命名：沿用云朵版的语义（browser / whisper-web / openai / deepgram / azure /
- *   custom-http）。默认 provider 是 `browser` —— 浏览器端 Web Speech API 开箱即用，
- *   使用者不用装任何东西就能用语音输入。
+ *   custom-http）。默认 provider 是 `whisper-web` —— 浏览器内本地跑 Whisper
+ *   （transformers.js + WASM），不依赖任何外部 STT 服务，也不走系统 Web Speech API；
+ *   首次使用会从 CDN 按需拉取模型权重（`browser` 仍作为可选 provider 保留）。
  */
 import { AZURE_STT_ID, STT_AZURE_DEFAULTS, createAzureSttProvider } from './stt-azure.js';
 import { BROWSER_STT_ID, STT_BROWSER_DEFAULTS, browserSttProvider } from './stt-browser.js';
@@ -40,8 +41,9 @@ export const STT_PROVIDER_IDS = [
   AZURE_STT_ID,
   CUSTOM_HTTP_STT_ID,
 ];
-// 默认浏览器端：无需服务器、无需装任何东西。
-export const DEFAULT_STT_PROVIDER_ID = BROWSER_STT_ID;
+// 默认：浏览器内本地 Whisper（whisper-web）。不依赖外部 STT 服务，也不依赖系统
+// Web Speech API；模型权重首次使用按需从 CDN 拉取。browser 仍可作为可选项保留。
+export const DEFAULT_STT_PROVIDER_ID = WHISPER_WEB_STT_ID;
 
 const STT_PROVIDER_CONFIG_KEYS = {
   [BROWSER_STT_ID]: 'browser',

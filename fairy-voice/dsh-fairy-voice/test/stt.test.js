@@ -2,7 +2,7 @@
  * Fairy-DSH [T-130] STT provider 注册表 + 各 provider 契约测试。
  *
  * 覆盖最容易回归的事：
- *   ① 默认 provider 是 browser（浏览器端开箱即用，无需服务器）
+ *   ① 默认 provider 是 whisper-web（浏览器内本地 Whisper，不依赖系统 Web Speech、不依赖服务器）
  *   ② 未知 id 回落到默认而非抛错（配置文件被手改坏也能起）
  *   ③ 纯客户端 provider（browser / whisper-web）被识别，传输层 isClientSide=true
  *   ④ 四个服务端 provider 按预期发请求并返回识别文本
@@ -28,11 +28,11 @@ const okResponse = (body) => ({
   text: async () => JSON.stringify(body),
 });
 
-test('default STT provider is browser (zero-config, runs in the browser)', () => {
-  assert.equal(DEFAULT_STT_PROVIDER_ID, 'browser');
-  assert.equal(normalizeSttProvider(undefined), 'browser');
-  assert.equal(normalizeSttProvider('nope'), 'browser');
-  assert.ok(STT_PROVIDER_IDS.includes('browser'));
+test('default STT provider is whisper-web (in-browser local inference, no Web Speech, no server)', () => {
+  assert.equal(DEFAULT_STT_PROVIDER_ID, 'whisper-web');
+  assert.equal(normalizeSttProvider(undefined), 'whisper-web');
+  assert.equal(normalizeSttProvider('nope'), 'whisper-web');
+  assert.ok(STT_PROVIDER_IDS.includes('browser'), 'browser 仍作为可选项保留');
   assert.ok(STT_PROVIDER_IDS.includes('whisper-web'));
   assert.ok(STT_PROVIDER_IDS.includes('openai'));
   assert.ok(STT_PROVIDER_IDS.includes('deepgram'));
@@ -138,7 +138,7 @@ test('custom-http STT posts raw audio and reads the response path', async () => 
 
 test('readRuntimeConfig exposes the STT view without dropping TTS fields', () => {
   const config = readRuntimeConfig();
-  assert.equal(config.sttProvider, 'browser');
+  assert.equal(config.sttProvider, 'whisper-web');
   assert.equal(config.sttProviderIds.length, 6);
   assert.equal(Object.keys(config.sttProviders).length, 6);
   assert.equal(config.provider, 'gpt-sovits', 'TTS 字段必须原样保留');

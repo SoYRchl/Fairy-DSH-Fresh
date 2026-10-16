@@ -364,6 +364,20 @@ test('voice controls use a compact icon toggle and custom volume slider', () => 
   assert.doesNotMatch(source, /children: '本地 Fairy'/);
 });
 
+test('whisper-web runs local in-browser inference and no longer depends on Web Speech', () => {
+  // 默认 provider 改为 whisper-web 后，语音输入在浏览器内本地跑 Whisper，
+  // 而不是委托系统 Web Speech API；加载失败必须带着错误信息回显，不能静默吞掉。
+  assert.match(source, /function loadEsmModule\(specifier\)/);
+  assert.match(source, /return import\(specifier\);/);
+  assert.match(source, /function decodeAudioBlobTo16kMono\(blob\)/);
+  assert.match(source, /const transcriber = await pipeline\('automatic-speech-recognition', modelId/);
+  assert.match(source, /if \(provider === 'whisper-web'\) startWhisperWebRecognition\(\)/);
+  assert.match(source, /else if \(provider === 'browser'\) startBrowserRecognition\(\)/);
+  assert.match(source, /本地语音识别失败：/);
+  assert.doesNotMatch(source, /catch \{\}/);
+  assert.doesNotMatch(source, /\.catch\(\(\) => \{\}\)/);
+});
+
 test('voice controls use restrained semantic contrast in both themes', () => {
   assert.match(source, /dsh-fairy-voice-volume::-webkit-slider-runnable-track\{[^}]*var\(--dsw-alias-label-secondary\)/);
   assert.match(source, /dsh-fairy-voice-volume::-webkit-slider-thumb\{[^}]*background:var\(--dsw-alias-label-secondary\)/);

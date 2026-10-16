@@ -1576,7 +1576,9 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
     }
 
     /* [T-130] 语音输入控制器：麦克风按钮。
-     *   · 浏览器端 provider（browser / whisper-web）→ 直接用浏览器 Web Speech API 识别；
+     *   · whisper-web（默认）→ 浏览器内本地 Whisper（transformers.js + WASM），不依赖
+     *     任何外部服务、也不走系统 Web Speech API；首次使用从 CDN 按需拉取模型权重。
+     *   · browser → 浏览器内置 Web Speech API（系统提供，零下载，但识别质量/可用性随环境而异）。
      *   · 服务端 provider（openai / deepgram / azure / custom-http）→ 录音后 POST 到
      *     /fairy-voice/stt，由宿主转发到对应服务。
      * 识别结果回填到对话输入框（受控输入值 setter + input 事件，跨 DSH 版本最稳）。
@@ -1602,6 +1604,46 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       } catch (error) {
         return false;
       }
+    }
+
+    /* 动态加载 ESM 模块（transformers.js 走 CDN）。用 `new Function` 构造 import()，
+     * 故意绕开 DSH cordis 对 clientModules 的打包改写——静态 import() 会被改写目标、
+     * 导致运行期从错误的路径加载模型脚本。new Function 的字符串体不被打包器解析，
+     * 运行期由浏览器原生 `import()` 直接拉取 specifier（绝对 URL）。 */
+    function loadEsmModule(specifier) {
+      const importDynamic = new Function('specifier', 'return import(specifier);');
+      return importDynamic(specifier);
+    }
+
+    /* 把录音 blob 解码并重采样成 Whisper 需要的 16kHz 单声道 Float32Array。
+     * transformers.js 的 automatic-speech-recognition 管线直接吃这种 raw PCM。 */
+    function decodeAudioBlobTo16kMono(blob) {
+      return new Promise((resolve, reject) => {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (typeof AudioCtx !== 'function') {
+          reject(new Error('当前浏览器不支持音频解码。'));
+          return;
+        }
+        blob.arrayBuffer()
+          .then((arrayBuffer) => new AudioCtx().decodeAudioData(arrayBuffer))
+          .then((audioBuffer) => {
+            const targetRate = 16000;
+            if (audioBuffer.sampleRate === targetRate && audioBuffer.numberOfChannels === 1) {
+              resolve(audioBuffer.getChannelData(0).slice());
+              return;
+            }
+            const frames = Math.max(1, Math.ceil(audioBuffer.duration * targetRate));
+            const offline = new OfflineAudioContext(1, frames, targetRate);
+            const source = offline.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offline.destination);
+            source.start();
+            offline.startRendering()
+              .then((rendered) => resolve(rendered.getChannelData(0)))
+              .catch((error) => reject(error));
+          })
+          .catch((error) => reject(error));
+      });
     }
 
     function FairySttMicIcon({ active }) {
@@ -1715,10 +1757,77 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
         setError('');
       };
 
+      const startWhisperWebRecognition = async () => {
+        const cfg = config?.sttProviders?.whisperWeb || {};
+        const moduleUrl = cfg.moduleUrl || 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm';
+        const modelId = cfg.modelId || 'onnx-community/whisper-base';
+        const device = cfg.device || 'wasm';
+        const dtype = cfg.dtype || 'q8';
+        const language = cfg.language || 'chinese';
+        if (!navigator.mediaDevices?.getUserMedia) { setError('当前环境无法访问麦克风。'); return; }
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (error) {
+          setError('麦克风权限被拒绝。');
+          return;
+        }
+        const mimeType = (window.MediaRecorder && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/webm'))
+          ? 'audio/webm'
+          : (window.MediaRecorder && typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+        let recorder;
+        try {
+          recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        } catch (error) {
+          setError('当前浏览器不支持录音。');
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        const chunks = [];
+        recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+        recorder.onstop = async () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+          if (blob.size === 0) { setBusy(false); return; }
+          try {
+            setBusy(true);
+            setError('正在加载本地语音模型…');
+            const transformers = await loadEsmModule(moduleUrl);
+            const { pipeline, env } = transformers;
+            if (cfg.resourceBase) env.backends.onnx.wasm.wasmPaths = cfg.resourceBase;
+            env.allowLocalModels = false;
+            const transcriber = await pipeline('automatic-speech-recognition', modelId, {
+              device,
+              dtype,
+              progress_callback: (progress) => {
+                if (progress && progress.status === 'progress' && typeof progress.progress === 'number') {
+                  setError(`正在下载本地语音模型 ${Math.round(progress.progress)}%`);
+                }
+              },
+            });
+            setError('正在识别…');
+            const samples = await decodeAudioBlobTo16kMono(blob);
+            const output = await transcriber(samples, { language, task: 'transcribe' });
+            const text = (output && (typeof output.text === 'string' ? output.text : (Array.isArray(output) ? output[0]?.text : ''))) || '';
+            setError('');
+            if (text) insertIntoComposer(text.trim());
+            else setError('没有识别到文字。');
+          } catch (error) {
+            setError(`本地语音识别失败：${error?.message || '未知错误'}`);
+          } finally {
+            setBusy(false);
+          }
+        };
+        mediaRef.current = recorder;
+        recorder.start();
+        setBusy(true);
+        setError('');
+      };
+
       const onToggle = () => {
         if (busy) { stopAll(); return; }
-        const isBrowserSide = provider === 'browser' || provider === 'whisper-web';
-        if (isBrowserSide) startBrowserRecognition();
+        if (provider === 'whisper-web') startWhisperWebRecognition();
+        else if (provider === 'browser') startBrowserRecognition();
         else startServerRecording();
       };
 
