@@ -13,7 +13,7 @@
 # 全部（本仓库 + 各包上游测试）
 node tools\run-tests.mjs
 
-# 只跑本仓库自己的（快，约 1 秒，36 项）
+# 只跑本仓库自己的（快，约 1 秒，37 项）
 node tools\run-tests.mjs --tools-only
 
 # 自定义单文件超时（默认 60s）
@@ -37,7 +37,7 @@ foreach ($d in @('fairy-visual\dsh-fairy-visual','fairy-voice\dsh-fairy-voice',
 | 组 | 位置 | 数量 | 作用 |
 | --- | --- | --- | --- |
 | **本仓库 · 兼容层回归** | `tools/tests/compat-patches.test.js` | 11 | 钉住兼容提交的关键点，防止升级或"重新生成"把兼容代码**悄悄删掉** |
-| **本仓库 · 发布卫生** | `tools/tests/release-hygiene.test.js` | 10 | 编码契约、URL 指向、版本一致性、lock 文件 |
+| **本仓库 · 发布卫生** | `tools/tests/release-hygiene.test.js` | 11 | 编码契约、URL 指向、版本一致性、lock 文件 |
 | **本仓库 · 壳与自举** | `tools/tests/shell-hygiene.test.js` | 10 | 壳源码纯 ASCII、禁本机路径、关窗即停标记 |
 | **本仓库 · 一键复现** | `tools/tests/bootstrap.test.js` | 5 | `bootstrap.mjs` 的装包点、junction、mtime 契约 |
 | **上游 · 各包自带** | `<包>/test/*.test.js` | 45 文件 | 上游原有的契约与行为测试（含 `fairy-system` / `fairy-compat`） |
@@ -46,9 +46,9 @@ foreach ($d in @('fairy-visual\dsh-fairy-visual','fairy-voice\dsh-fairy-voice',
 
 | 跑法 | 结果 |
 | --- | --- |
-| `--tools-only` | **36 pass / 0 fail / 0 stale** |
-| 本地全量 | **258 pass / 2 fail / 5 stale** |
-| CI（windows-latest，Node 22 + 24） | **250 pass / 7 fail / 5 stale** |
+| `--tools-only` | **37 pass / 0 fail / 0 stale** |
+| 本地全量 | **259 pass / 2 fail / 5 stale** |
+| CI（windows-latest，Node 22 + 24） | **251 pass / 7 fail / 5 stale** |
 
 本地 2 项红：`fairy-visual/test/contract.test.js`（断言了一处已被有意改掉的调用写法）、
 `browser-dock/test/state-watch.test.js`。CI 上另有 `fairy-system/test/preflight.test.js` 6 项
