@@ -2,11 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+/* ★ 2026-10-19：本文件原来直接按 '\n' 找边界标记 —— Windows CI（core.autocrlf=true）
+ * 检出的是 CRLF，标记匹配不到，于是本地全绿、CI 恒红。balance-meter 与 fairy-startup
+ * 的同类测试早就用 toLf() 统一换行了，这里补齐同一约定。 */
+const toLf = (value) => value.replace(/\r\n/g, '\n');
+
 const clientPath = new URL('../lib/client.js', import.meta.url);
-const source = await readFile(clientPath, 'utf8');
-const serverSource = await readFile(new URL('../lib/index.js', import.meta.url), 'utf8');
-const canonicalClientDiagnostics = await readFile(new URL('../../../fairy-contracts/client-diagnostics.cjs', import.meta.url), 'utf8');
-const canonicalClientDom = await readFile(new URL('../../../fairy-contracts/client-dom.cjs', import.meta.url), 'utf8');
+const source = toLf(await readFile(clientPath, 'utf8'));
+const serverSource = toLf(await readFile(new URL('../lib/index.js', import.meta.url), 'utf8'));
+const canonicalClientDiagnostics = toLf(await readFile(new URL('../../../fairy-contracts/client-diagnostics.cjs', import.meta.url), 'utf8'));
+const canonicalClientDom = toLf(await readFile(new URL('../../../fairy-contracts/client-dom.cjs', import.meta.url), 'utf8'));
 
 function embeddedClientDiagnostics(value) {
   const begin = '// DSH_FAIRY_CLIENT_DIAGNOSTICS_BEGIN\n';
