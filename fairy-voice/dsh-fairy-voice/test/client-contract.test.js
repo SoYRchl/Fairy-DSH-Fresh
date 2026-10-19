@@ -43,7 +43,12 @@ test('slot registration has one replacement owner and an explicit disposer', () 
   assert.match(source, /function injectVoiceSlot\(ctx, name, definition, component\)/);
   assert.equal(source.includes('const releaseRegistration = () =>'), true);
   assert.match(source, /const dispose = disposeRegistration;/);
-  assert.match(source, /return releaseRegistration;/);
+  // 原来钉的是 `return releaseRegistration;`（注册清理一律走共享闭包）。实例作用域改造后
+  // inject 直接返回 ctx.slots.inject 的清理器，且只在 disposeRegistration === dispose 时清空；
+  // 旧写法会把上一代节点迟到的 cleanup 误当成新注册的清理，把新控件一起拆掉。
+  assert.match(source, /if \(disposeRegistration === dispose\) disposeRegistration = null;/);
+  assert.match(source, /return \(\) => \{\s*if \(disposeRegistration === dispose\) disposeRegistration = null;\s*dispose\?\.\(\);\s*\};/);
+  assert.doesNotMatch(source, /return releaseRegistration;/);
   assert.match(source, /const slotDisposers = \[/);
   assert.match(source, /dsh-fairy-voice slot registrations/);
 });
@@ -67,7 +72,12 @@ test('active DSH session selection synchronously invalidates every stale voice g
   assert.match(source, /function createActiveSessionStore\(sessions\)/);
   assert.match(source, /let activeSessionStore = null/);
   assert.match(source, /const activeSessions = activeSessionStore \|\| emptyActiveSessionStore/);
-  assert.match(source, /sessions\?\.list\?\.getSnapshot\?\.\(\)\.current/);
+  // 原来钉的是 `sessions?.list?.getSnapshot?.().current`。0.2.0 的 list 快照不再有 .current：
+  // 现役 key 先看旧字段（current/currentId/active/selected），否则从 retainedBy.mainView 的
+  // 保留行推导，再不行回落 'empty-chat'。断言改成这条真实推导链。
+  assert.match(source, /const legacy = snap\?\.current \?\? snap\?\.currentId \?\? snap\?\.active \?\? snap\?\.selected;/);
+  assert.match(source, /\(row\.retainedBy && row\.retainedBy\.mainView\) \|\| 0\) > 0/);
+  assert.match(source, /return 'empty-chat';/);
   assert.match(source, /snapshot = \{ key, epoch: snapshot\.epoch \+ 1 \}/);
   assert.match(source, /React\.useSyncExternalStore\(activeSessions\.subscribe, activeSessions\.getSnapshot, activeSessions\.getSnapshot\)/);
   assert.match(source, /return activeSessions\.subscribe\(\(\) => \{\s*if \(activeSessions\.getSnapshot\(\)\.key !== sessionKey\) cancelPlayback\(\);/s);
@@ -193,6 +203,9 @@ test('voice controller renders without unresolved hook-scope references', async 
     jsx(type, props) { return { type, props: props || {} }; },
     jsxs(type, props) { return { type, props: props || {} }; },
   };
+  // 0.2.x 客户端在 apply() 里新增了两个定时器（会话保留轮询 + 语音异常提示），
+  // 上游用例的 vm 沙箱没有 setInterval → apply 抛 ReferenceError，整条用例红。
+  // 补齐定时器全局即可；用 no-op 实现，避免测试进程被未清理的 interval/timer 拖住。
   const context = vm.createContext({
     AbortController,
     CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
@@ -201,6 +214,7 @@ test('voice controller renders without unresolved hook-scope references', async 
     Set,
     URL,
     clearTimeout,
+    clearInterval,
     console,
     document: {
       documentElement: { hasAttribute: (name) => name === 'data-dsh-fairy-visual' },
@@ -208,7 +222,8 @@ test('voice controller renders without unresolved hook-scope references', async 
     },
     fetch: async () => ({ ok: true, json: async () => ({ available: true }), body: null }),
     localStorage: { getItem: () => null, setItem() {} },
-    setTimeout,
+    setInterval: () => 0,
+    setTimeout: () => 0,
     window: {
       __ModuleLoader__: { load(definition) { moduleDefinition = definition; } },
       addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
@@ -243,16 +258,27 @@ test('keeps the composer voice controls in the official left input slot', () => 
   assert.doesNotMatch(source, /ctx\.slots\.inject\('conversation\.input\.right'/);
 });
 
-test('only mounts the composer voice controller while HDD visual mode is active', () => {
+test('composer voice controller always mounts and no longer gates on HDD visual mode', () => {
+  const scopedController = source.slice(source.indexOf('function SessionScopedVoiceController'), source.indexOf('function MessageAction'));
+  // 原来这条整条钉的是「视觉模式门控」：先确认 useHddVisualMode 观察 html[data-dsh-fairy-visual]，
+  // 再断言 SessionScopedVoiceController 里有 `const hddVisualMode = useHddVisualMode();` 与
+  // `if (!hddVisualMode) return null;`。兼容改动有意拆掉门控（Fairy 视觉关闭时朗读按钮、
+  // 自动播报、音量都必须照常可用），所以改成断言当前契约：控制器完全不读视觉模式属性、
+  // 永远渲染，只用 sessionId 做 key 在换会话时强制重挂。
+  // 视觉模式助手本身还在（观察 html[data-dsh-fairy-visual]），但已不再被朗读控制器消费；
+  // 下面 5 条继续守住这个助手的实现，反向守卫则守住「门控已拆」。
   assert.match(source, /function useHddVisualMode\(\)/);
   assert.match(source, /document\.documentElement\?\.hasAttribute\('data-dsh-fairy-visual'\) === true/);
   assert.match(source, /new MutationObserver\(notify\)/);
   assert.match(source, /attributeFilter: \['data-dsh-fairy-visual'\]/);
   assert.match(source, /return \(\) => observer\.disconnect\(\)/);
-  const scopedController = source.slice(source.indexOf('function SessionScopedVoiceController'), source.indexOf('function MessageAction'));
-  assert.match(scopedController, /const hddVisualMode = useHddVisualMode\(\);/);
-  assert.match(scopedController, /if \(!hddVisualMode\) return null;/);
+  assert.match(scopedController, /function SessionScopedVoiceController\(props\)/);
+  assert.doesNotMatch(scopedController, /useHddVisualMode/);
+  // 只断言不再读该属性（注释里出现 data-dsh-fairy-visual 是历史说明，不算行为）。
+  assert.doesNotMatch(scopedController, /hasAttribute/);
+  assert.doesNotMatch(scopedController, /return null/);
   assert.doesNotMatch(scopedController, /display:\s*none/);
+  assert.match(scopedController, /return jsx\.jsx\(VoiceController, \{ \.\.\.props, key: String\(props\.sessionId \?\? 'empty-chat'\) \}\);/);
 });
 
 test('server retains cancellation through the complete upstream PCM stream', async () => {
@@ -318,7 +344,12 @@ test('final auto-read is owned by the official closed-turn tail, not settled ass
 
 test('message actions use the DSH-provided session id', () => {
   assert.match(source, /function MessageAction\(\{ messageId, sessionId \}\)/);
-  assert.match(source, /const sessionKey = String\(sessionId \?\? activeSessionStore\?\.getSnapshot\(\)\.key \?\? 'empty-chat'\);/);
+  // 原来钉的是「直接读全局 activeSessionStore 快照」。0.2.0 的 retention 派生 key 会在挂载后
+  // 一小会儿才稳定，必须订阅 activeStore 触发重渲染，否则组件永远停在初始 'empty-chat'
+  // 而不渲染。断言改成当前的订阅 + 回落链。
+  assert.match(source, /const activeStore = activeSessionStore \|\| emptyActiveSessionStore;/);
+  assert.match(source, /const activeSnap = React\.useSyncExternalStore\(activeStore\.subscribe, activeStore\.getSnapshot, activeStore\.getSnapshot\);/);
+  assert.match(source, /const sessionKey = String\(sessionId \?\? activeSnap\?\.key \?\? 'empty-chat'\);/);
 });
 
 test('message actions reuse one indexed timeline projection per session', () => {
@@ -386,10 +417,17 @@ test('voice controls use restrained semantic contrast in both themes', () => {
 });
 
 test('voice brain only derives reports from actual DSH activity metadata', () => {
-  assert.match(source, /function readVoiceTimeline\(snapshot\)/);
+  // 原来钉的是单参签名 `readVoiceTimeline(snapshot)`；0.3.1 起 useChat 的 chat 作为第二入参
+  // 传入（取不到时回落 snapshot.chat），断言改成当前真实签名与回落。
+  assert.match(source, /function readVoiceTimeline\(snapshot, __fairyChat\)/);
+  assert.match(source, /const chat = __fairyChat \|\| snapshot\?\.chat;/);
   assert.match(source, /function collectRunningTools\(block, activeTools/);
   assert.doesNotMatch(source, /node\?\.kind === 'tool-call' && node\.data\?\.root/);
-  assert.match(source, /snapshot\?\.chat\?\.legacy\?\.runningCalls/);
+  // 原来钉的是 `snapshot?.chat?.legacy?.runningCalls` 这条取用路径。当前 chat 由 useChat 直接
+  // 传入，运行中工具改读 `chat?.legacy?.runningCalls`，并在该字段缺失时从 chat.nodes.byKey
+  // 里挑仍在 running 的 tool 节点兜底。断言换成当前这两段真实来源。
+  assert.match(source, /for \(const call of chat\?\.legacy\?\.runningCalls \|\| \[\]\) \{/);
+  assert.match(source, /const __fairyIndex = chat\?\.nodes\?\.byKey;/);
   assert.match(source, /function isSearchTool\(name\)/);
   assert.match(source, /activeTools\.some\(\(tool\) => isSearchTool\(tool\.name\)\)/);
   assert.doesNotMatch(source, /reasoning.*searching|searching.*reasoning/i);
@@ -430,7 +468,10 @@ test('only long final answers use the optional local voice-brief bridge', () => 
   assert.match(source, /VoiceBrainSection/);
   assert.match(source, /function requestVoiceBrainConfig\(payload\)/);
   assert.match(source, /无法连接本地语音简报服务。请重新加载 DSH 后重试。/);
-  assert.match(source, /settings\.section/);
+  // 原来钉的是 voice 包自己注册 `settings.section`（设置里出现独立的「Fairy 朗读」面板）。
+  // 0.2.0 起设置入口并入 fairy-visual 的单个 Fairy 面板，voice 不再注册自己的 section ——
+  // 断言随之翻转为「不得再出现 settings.section」，防止把独立面板又挂回去。
+  assert.doesNotMatch(source, /settings\.section/);
   assert.match(source, /deepseek-v4-flash/);
   assert.match(source, /The visible answer is already authoritative/);
 });

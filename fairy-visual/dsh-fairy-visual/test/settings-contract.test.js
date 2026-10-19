@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { settingsNamespace } from '@deepseek-ai/dsh-settings';
-import { FAIRY_VISUAL_SETTINGS_NAMESPACE } from 'dsh-fairy-contracts';
+/* ★ 2026-10-19：`dsh-fairy-contracts` 这个包早已被内联进 vendor/（兼容提交做的），
+ * 这条 import 因此变成 ERR_MODULE_NOT_FOUND —— 整个文件从来没真正跑起来过。
+ * 改为直接引仓库内的 vendored 副本，测的仍是同一份契约。 */
+import { FAIRY_VISUAL_SETTINGS_NAMESPACE } from '../vendor/fairy-contracts.js';
 import { FairyVisualSettings } from '../src/index.js';
 
 const namespace = FAIRY_VISUAL_SETTINGS_NAMESPACE;
@@ -39,7 +42,10 @@ test('Visual settings schema keeps the registered fields, defaults, and bounds',
     'composerDockHeight',
   ]);
   assert.equal(fields.version.meta.default, 2);
-  assert.equal(fields.enabled.meta.default, false);
+  /* ★ 2026-10-19：默认值从 false 改成 true（D-053）。原断言钉的是「全新 home 里
+   * Fairy 默认关闭」，但实际产物是默认开启 —— 断言与实现相反，属于「保护 bug」。
+   * 默认开启是有意设计：第一次装上就该看见 HDD 视觉，而不是一片空白。 */
+  assert.equal(fields.enabled.meta.default, true);
   assert.equal(fields.theme.meta.default, 'dark');
   assert.equal(fields.mascotVisible.meta.default, true);
   assert.deepEqual(

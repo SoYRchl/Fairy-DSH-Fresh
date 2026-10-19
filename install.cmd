@@ -32,7 +32,13 @@ rem
 rem   也不要用 GBK 存不下的字符（emoji、特殊符号等）。
 rem ===============================================================
 
-set "BASE=https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download"
+rem [2026-10-19] This repo only publishes prereleases, and GitHub resolves
+rem /releases/latest only to a NON-prerelease - so releases/latest/download/* 404s.
+rem Use the versioned URL: the tag comes from VERSION when present, and pack.ps1
+rem bakes __FAIRY_TAG__ into the copy that ships inside a Release.
+if not defined FAIRY_TAG set "FAIRY_TAG=__FAIRY_TAG__"
+if exist "%~dp0VERSION" for /f "usebackq delims=" %%v in ("%~dp0VERSION") do set "FAIRY_TAG=v%%v"
+set "BASE=https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/download/%FAIRY_TAG%"
 set "PROFILE=web"
 if not "%~1"=="" set "PROFILE=%~1"
 

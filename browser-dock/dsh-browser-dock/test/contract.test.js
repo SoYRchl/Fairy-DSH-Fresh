@@ -60,9 +60,15 @@ test('keeps frames private and controls same-origin', () => {
   assert.doesNotMatch(client, /localStorage|sessionStorage|https?:\/\//);
 });
 
-test('pushes state-file changes and falls back to an 800ms poll', () => {
-  assert.match(host, /watch\(RUNTIME_DIR/);
-  assert.match(host, /String\(filename \|\| ''\) === 'state\.json'/);
+/* ★ 2026-10-19 改：原来钉的是 fs.watch(RUNTIME_DIR)。那个写法在 Windows 上
+ * 对含中文 / 8.3 短名的目录会触发 Node 内部断言（src/win/fs-event.c:72）把宿主
+ * 直接打挂——不是抛错，是崩进程。改成 fs.watchFile 轮询后，断言改为钉住轮询实现，
+ * 并反向守卫「不要再用裸 watch」。 */
+test('watches state.json by stat polling (never fs.watch: it crashes the host on Windows)', () => {
+  assert.match(host, /watchFile\(STATE_FILE, \{ interval: STATE_POLL_MS \}/);
+  assert.match(host, /const STATE_POLL_MS = 800/);
+  assert.match(host, /implementation: 'fs\.watchFile'/);
+  assert.doesNotMatch(host, /watch\(RUNTIME_DIR/);
   assert.match(host, /event: state\\ndata: changed/);
   assert.match(host, /path: '\/browser-dock\/events'/);
   assert.match(host, /Content-Type', 'text\/event-stream; charset=utf-8'/);
@@ -76,9 +82,13 @@ test('pushes state-file changes and falls back to an 800ms poll', () => {
   assert.ok(800 >= 350 * 2, 'fallback interval should be at least twice the former active poll interval');
 });
 
-test('delivers proxy controls by filesystem event with a low-frequency reconciliation fallback', () => {
-  assert.match(proxy, /fs\.watch\(runtimeDir/);
-  assert.match(proxy, /String\(filename \|\| ''\) === commandFileName/);
+/* ★ 2026-10-19 改：proxy 侧同样从 fs.watch 换成 fs.watchFile —— 同一个 Windows
+ * 8.3 短名断言（src/win/fs-event.c:72）。命令文件是原子 rename 进来的，
+ * stat 轮询照样能看见；原来 5s 的对账定时器继续兜底。 */
+test('delivers proxy controls by stat polling with a low-frequency reconciliation fallback', () => {
+  assert.match(proxy, /fs\.watchFile\(commandFile, \{ interval: commandPollMs \}/);
+  assert.match(proxy, /const commandPollMs = 300/);
+  assert.doesNotMatch(proxy, /fs\.watch\(runtimeDir/);
   assert.match(proxy, /const commandRescanMs = 5_000/);
   assert.match(proxy, /setInterval\(checkCommands, commandRescanMs\)/);
   assert.equal(proxy.includes("const commandTimer = setInterval(() => {\n  try { pollCommands();"), false);

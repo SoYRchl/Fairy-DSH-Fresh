@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createFairyDiagnostics } from '../vendor/diagnostics.js';
@@ -10,6 +10,7 @@ const STATE_FILE = join(RUNTIME_DIR, 'state.json');
 const COMMAND_FILE = join(RUNTIME_DIR, 'command.json');
 const CONTROL_TOKEN_FILE = join(RUNTIME_DIR, 'control-token');
 const MAX_CONTROL_BYTES = 2048;
+const STATE_POLL_MS = 800;
 const appliedContexts = new WeakSet();
 const diagnostics = createFairyDiagnostics('dsh-browser-dock');
 
@@ -40,11 +41,17 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let length = 0;
+    let overflowed = false;
     req.on('data', (chunk) => {
+      if (overflowed) return;
       length += chunk.length;
       if (length > MAX_CONTROL_BYTES) {
+        // 不在这里 destroy：调用方还要把 400 写回去。先排空剩余上传，
+        // 否则响应写进已重置的连接，客户端只会看到 ECONNRESET。
+        overflowed = true;
+        chunks.length = 0;
+        req.resume();
         reject(new Error('control body too large'));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
@@ -96,6 +103,7 @@ export function apply(ctx) {
   };
   const disableWatcher = (error) => {
     watcherAvailable = false;
+    try { unwatchFile(STATE_FILE); } catch {}
     stateWatcher?.close();
     stateWatcher = null;
     closeStateClients();
@@ -115,12 +123,13 @@ export function apply(ctx) {
     try {
       // The proxy publishes with atomic rename, so watch the stable directory
       // instead of the replaceable state.json inode.
-      stateWatcher = watch(RUNTIME_DIR, (event, filename) => {
-        if ((event === 'change' || event === 'rename') && String(filename || '') === 'state.json') notifyClients();
-      });
+      // ★ 不用 fs.watch：Windows 上对含中文 / 8.3 短名的目录会触发 Node 内部
+      //   断言（src/win/fs-event.c:72）直接把宿主进程打挂，而不是抛错。
+      //   fs.watchFile 走 stat 轮询，同样能看见原子 rename 后的 state.json。
+      watchFile(STATE_FILE, { interval: STATE_POLL_MS }, () => notifyClients());
+      stateWatcher = null;
       watcherAvailable = true;
-      diagnostics.metric('state.watch.start', diagnostics.start(), { implementation: 'fs.watch' });
-      stateWatcher.on('error', disableWatcher);
+      diagnostics.metric('state.watch.start', diagnostics.start(), { implementation: 'fs.watchFile' });
     } catch (error) {
       disableWatcher(error);
     }

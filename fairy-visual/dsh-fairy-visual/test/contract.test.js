@@ -893,7 +893,12 @@ test('keeps the settings schema backward-compatible and mode-scoped', () => {
   assert.match(serverSource, /mascotAnimationSpeed: z\.union\(\[z\.const\(0\.7\), z\.const\(1\), z\.const\(1\.5\)\]\)\.default\(1\)/);
   assert.match(constantsSource, /mascotScale: 1/);
   assert.match(constantsSource, /mascotAnimationSpeed: 1/);
-  assert.match(clientSource, /syncDocumentMode\(settings\.getSnapshot\(\)\)/);
+  /* ★ 2026-10-19 修正这条断言：它原先钉的是 `syncDocumentMode(settings.getSnapshot())`，
+   * 也就是「首同步直接用原始快照」。但那正是「全新 home 下 HDD 视觉不亮」的真因
+   * （空存储时 enabled 判 false，schema 默认值根本走不到；归一化只在变更事件里发生）——
+   * D-053 已把首同步改成归一化值。断言必须钉**当前有意行为**，否则它保护的是 bug。 */
+  assert.match(clientSource, /syncDocumentMode\(\{\s*value: migrateVisualSettings\(/);
+  assert.doesNotMatch(clientSource, /syncDocumentMode\(settings\.getSnapshot\(\)\)/);
 });
 
 test('keeps Fairy scale control removed from the voice hardware', () => {

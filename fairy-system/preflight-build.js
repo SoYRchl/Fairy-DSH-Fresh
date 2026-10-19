@@ -266,13 +266,18 @@ function createDefaultConfig(overrides = {}) {
     { name: 'dsh-fairy-voice', directory: path.join(dshHome, 'fairy-voice', 'dsh-fairy-voice'), sourceRoot: null },
     { name: 'dsh-fairy-visual', directory: path.join(dshHome, 'fairy-visual', 'dsh-fairy-visual'), sourceRoot: 'src' },
   ];
+  const dshPackagePath = path.resolve(overrides.dshPackagePath || process.env.DSH_OFFICIAL_PACKAGE || DEFAULT_OFFICIAL_DSH_PACKAGE);
   return {
     dshHome,
     profileRoot,
     workspaceRoot: path.resolve(overrides.workspaceRoot || process.env.DSH_WORKSPACE_ROOT || path.join(dshHome, 'fairy-voice')),
-    dshPackagePath: path.resolve(overrides.dshPackagePath || process.env.DSH_OFFICIAL_PACKAGE || DEFAULT_OFFICIAL_DSH_PACKAGE),
+    dshPackagePath: dshPackagePath,
     runtimePath: path.resolve(overrides.runtimePath || process.env.DSH_OFFICIAL_RUNTIME || DEFAULT_OFFICIAL_RUNTIME),
-    yamlAnchor: path.resolve(overrides.yamlAnchor || process.env.DSH_YAML_ANCHOR || DEFAULT_OFFICIAL_DSH_PACKAGE),
+    /* ★ 2026-10-19：yamlAnchor 原来**独立**默认成硬编码的 ~/.local/lib/...，
+     * 完全无视 DSH_OFFICIAL_PACKAGE。后果：任何把 DSH 装在别处的用户（绝大多数），
+     * 启动闸门都会报 profile_lockfile / MODULE_NOT_FOUND 而拒绝启动 —— 这是真误报，
+     * 不是配置问题。它必须跟随已解析出的官方包路径。 */
+    yamlAnchor: path.resolve(overrides.yamlAnchor || process.env.DSH_YAML_ANCHOR || dshPackagePath),
     yamlModule: overrides.yamlModule,
     packageDefinitions: packageDefinitions.map((definition) => ({ ...definition, directory: path.resolve(definition.directory) })),
     approved: overrides.approved || loadApprovedOverride() || APPROVED,

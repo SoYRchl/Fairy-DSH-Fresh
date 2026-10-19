@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 
 import { APPROVED } from '../preflight-build.js';
@@ -84,6 +85,27 @@ function createFixture() {
   return { root, profile, officialDsh, officialRuntime, approvedFile };
 }
 
+/*
+ * yaml 解析器的锚点（★ 2026-10-19）
+ * ------------------------------
+ * 产线里 preflight 从**官方 DSH 安装**里解析 yaml（内核依赖它），这没问题。
+ * 但夹具里的「官方 dsh」是假的 package.json，不可能自带解析器；而 CI 上也没有
+ * 本机那份 ~/.local/lib 全局安装 —— 于是六个用例在 CI 恒红（profile_lockfile /
+ * MODULE_NOT_FOUND），本地却因为机器上恰好有全局安装而全绿。这就是「假绿」。
+ *
+ * 正解：从本仓库**自己**已安装的依赖里取 yaml。fairy-voice 与 balance-meter 都把
+ * yaml 作为依赖安装（CI 也会装），任取其一作为 createRequire 的锚点。
+ */
+function resolveYamlAnchor() {
+  for (const relative of ['../../fairy-voice/dsh-fairy-voice/', '../../balance-meter/dsh-balance-meter/']) {
+    const directory = fileURLToPath(new URL(relative, import.meta.url));
+    const manifest = join(directory, 'package.json');
+    try { createRequire(manifest).resolve('yaml'); return manifest; } catch { /* 试下一个 */ }
+  }
+  return null;
+}
+const YAML_ANCHOR = resolveYamlAnchor();
+
 function runVerifier(fixture, extraEnv = {}) {
   return spawnSync(process.execPath, [verifier], {
     env: {
@@ -92,6 +114,7 @@ function runVerifier(fixture, extraEnv = {}) {
       DSH_OFFICIAL_PACKAGE: join(fixture.officialDsh, 'package.json'),
       DSH_OFFICIAL_RUNTIME: fixture.officialRuntime,
       DSH_PREFLIGHT_APPROVED_FILE: fixture.approvedFile,
+      ...(YAML_ANCHOR ? { DSH_YAML_ANCHOR: YAML_ANCHOR } : {}),
       ...extraEnv,
     },
     encoding: 'utf8',
@@ -99,6 +122,8 @@ function runVerifier(fixture, extraEnv = {}) {
 }
 
 test('accepts complete bundles and profile links', (t) => {
+  /* 找不到 yaml 就**大声失败**，不要静默跳过：跳过了等于这条闸门没人守。 */
+  assert.ok(YAML_ANCHOR, '本仓库的 fairy-voice / balance-meter 里应能解析到 yaml（CI 会 pnpm install 它们）');
   const fixture = createFixture();
   t.after(() => rmSync(fixture.root, { recursive: true, force: true }));
   const result = runVerifier(fixture);

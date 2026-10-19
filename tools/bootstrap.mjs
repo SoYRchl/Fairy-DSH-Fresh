@@ -131,4 +131,4 @@ if (failures > 0) {
   process.exit(1);
 }
 console.log(GREEN(checkOnly ? '检查通过：状态可复现。' : 'bootstrap 完成：可以启动了。'));
-console.log(DIM('启动：node "E:/PureEnglishPath/Fairy-DSH-Launch/fairy-launcher.mjs" start'));
+console.log(DIM('启动：dsh web（或在桌面应用里打开）；本仓库不附带启动器脚本。'));

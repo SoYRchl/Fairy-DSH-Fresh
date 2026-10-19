@@ -126,10 +126,43 @@ foreach ($key in $Catalog.Keys) {
 # ⚠️ uninstall.ps1 必须跟 uninstall.cmd 一起传 —— 那个 .cmd 只是个纯 ASCII 启动器，
 #    真正的逻辑在 .ps1 里（中文放 .ps1 才能彻底躲开 936 代码页的乱码坑）。
 $installerFiles = @()
+# [2026-10-19] 本仓库只发 prerelease，releases/latest/download/* 一律 404。
+# 源文件里的 BASE 用 %FAIRY_TAG%（从同目录 VERSION 推导），但 Release 目录不带 VERSION，
+# 所以复制过来之后要把 __FAIRY_TAG__ 这个占位符烤成实际 tag。
+# 注意：这两个 .cmd 是 GBK 编码，**只能做字节级替换**，绝不能按文本读进来再写回去
+# （那样 GBK 中文会被按 UTF-8 解码成 U+FFFD，永久损坏 —— 见 release-hygiene 的注释）。
+$releaseTag = 'v' + ((Get-Content -LiteralPath (Join-Path $root 'VERSION') -Raw).Trim())
 foreach ($f in @('install.cmd', 'install_full.cmd', 'uninstall.cmd', 'uninstall.ps1')) {
   $src = Join-Path $root $f
   if (Test-Path -LiteralPath $src) {
-    Copy-Item -LiteralPath $src -Destination (Join-Path $OutDir $f) -Force
+    $dst = Join-Path $OutDir $f
+    Copy-Item -LiteralPath $src -Destination $dst -Force
+    if ($f -like 'install*') {
+      $bytes = [System.IO.File]::ReadAllBytes($dst)
+      $needle = [System.Text.Encoding]::ASCII.GetBytes('__FAIRY_TAG__')
+      $replacement = [System.Text.Encoding]::ASCII.GetBytes($releaseTag)
+      # 纯 ASCII 子串替换：逐字节查找（源文件其余部分是 GBK，不参与解码）
+      $out = New-Object System.Collections.Generic.List[byte]
+      $i = 0
+      while ($i -lt $bytes.Length) {
+        $matched = $false
+        if ($i + $needle.Length -le $bytes.Length) {
+          $matched = $true
+          for ($j = 0; $j -lt $needle.Length; $j++) {
+            if ($bytes[$i + $j] -ne $needle[$j]) { $matched = $false; break }
+          }
+        }
+        if ($matched) {
+          $out.AddRange($replacement)
+          $i += $needle.Length
+        } else {
+          $out.Add($bytes[$i])
+          $i += 1
+        }
+      }
+      [System.IO.File]::WriteAllBytes($dst, $out.ToArray())
+      Write-Host "     baked $f -> $releaseTag" -ForegroundColor DarkGray
+    }
     $installerFiles += $f
   } else {
     Warn "没找到 $f，输出目录里将没有它"
@@ -171,9 +204,11 @@ foreach ($r in $results) { Write-Host "    $($r.文件)" -ForegroundColor DarkGr
 Write-Host ""
 Write-Host "  传完后的永久地址（README 里用的就是这些，把 <用户名>/<仓库> 换掉）：" -ForegroundColor White
 foreach ($r in $results) {
-  Write-Host "    https://github.com/<用户名>/<仓库>/releases/latest/download/$($r.文件)" -ForegroundColor DarkGray
+  Write-Host "    https://github.com/<用户名>/<仓库>/releases/download/$releaseTag/$($r.文件)" -ForegroundColor DarkGray
 }
 Write-Host ""
-Write-Host "  ⚠️ 附件名必须原样用这些（不带版本号）。latest/download 的文件名是照字面取的，" -ForegroundColor Yellow
+Write-Host "  ⚠️ 本仓库只发 prerelease，GitHub 的 /releases/latest 只指向非预发布 ——" -ForegroundColor Yellow
+Write-Host "     所以 releases/latest/download/* 一律 404。用上面这种带版本号的地址。" -ForegroundColor Yellow
+Write-Host "  ⚠️ 附件名仍必须原样用（不带版本号），这样同一个 tag 的地址才稳定。" -ForegroundColor Yellow
 Write-Host "     带版本号的话提交当天有效，下次发版就 404。" -ForegroundColor Yellow
 Write-Host ""

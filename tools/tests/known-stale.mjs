@@ -17,8 +17,9 @@
  *     拼接 bug + `--diff` 依赖 `/usr/bin/diff`（Windows 没有）→ 已修，现全绿。
  *   · preflight.test.js —— 6 项：夹具依赖**本机** `~/.local/.../dsh` + 相对符号链接
  *     在 Windows 上静默失效 → 已改为夹具自带官方 dsh / 绝对 junction，现全绿。
- *   · upgrade.test.js —— 7 项：见下方独立条目。
- * 只有 upgrade.test.js 仍留在名单里。
+ *   · upgrade.test.js —— 7 项：2026-10-19 语义级重写（显式 profile 根 + 0.2.x 版本/包名 +
+ *     夹具自带 profile/运行时/capability matrix，并补三条「闸门遇到 0.2.x 漂移如何 fail closed」）
+ *     → 现全绿并从名单摘除。至此 fairy-system 测试目录全部为绿。
  *
  * 处理原则（重要）
  * ----------------
@@ -33,83 +34,20 @@
  * 例如 settings.section 已并入 fairy-visual 面板 → 断言应改为
  * "voice 包**不再**注册自己的 section"，而不是断言它注册了。
  */
-
 export const KNOWN_STALE = new Map([
-  // ---------- fairy-voice ----------
-  [
-    'fairy-voice/dsh-fairy-voice/test/client-contract.test.js',
-    {
-      reason: '断言上游原结构，与兼容改动冲突',
-      detail:
-        '这些用例硬编码上游实现细节，而兼容提交有意改掉了它们：' +
-        '(a) `return releaseRegistration;` / 槽位所有权 —— cf9c055 改成实例作用域清理；' +
-        '(b) `sessions?.list?.getSnapshot?.().current` —— e64308e 改为从 mainView retention 推导' +
-        '（0.2.0 的 list 快照没有 .current）；' +
-        '(c) `const hddVisualMode = useHddVisualMode();` —— 39be114/95d2864 有意拆掉视觉模式门控；' +
-        '(d) `settings.section` —— 0.2.0 起并入 fairy-visual 的单个 Fairy 面板；' +
-        '(e) `function readVoiceTimeline(snapshot)` —— 0.3.1 加了第二入参 useChat。',
-      fix: '把每条断言改成针对当前有意行为（例如断言"不再注册 settings.section"），而不是断言上游原结构。',
-    },
-  ],
-  [
-    'fairy-voice/dsh-fairy-voice/test/index.test.js',
-    {
-      reason: '同上，断言上游宿主侧原结构',
-      detail: '宿主侧也随兼容改动变化（settings.register 守卫、自启加固、配置透传等）。',
-      fix: '改为断言当前的守卫/降级行为本身。',
-    },
-  ],
-
-  // ---------- fairy-visual ----------
-  [
-    'fairy-visual/dsh-fairy-visual/test/settings-contract.test.js',
-    {
-      reason: '断言 client.js 里的具体实现形态',
-      detail:
-        '该文件按字节/正则核对 client.js 的内部形态（包含路径与拼接方式），' +
-        '而 client.js 是**生成物**且被 8 个兼容提交直接改过（图标双代解析、' +
-        'settingsScope 兜底、HDD 可选等）。断言的具体字符串已与产物不符。',
-      fix:
-        '改为断言契约（"必须存在 localStorage 兜底"、"必须探测 settingsScope"），' +
-        '而不是断言某段字面代码。注意：tools/tests/compat-patches.test.js 已经这样做了。',
-    },
-  ],
-  // ---------- fairy-system ----------
-  [
-    'fairy-system/test/upgrade.test.js',
-    {
-      reason: '整套断言 0.1.1-rc.2 时代 + 依赖本机现役 B 线 home，无法在 CI/整合仓成立',
-      detail:
-        '(a) 夹具直接取 `homedir()/.dsh/profiles/web` 的 node_modules 建链接 —— 本机 `~/.dsh` ' +
-        '是 A 官方桌面端的 home（desktop profile），不是 B 线的（B 线 home 在别处），必然 ENOENT；' +
-        '(b) 硬编码 `dsh-client-runtime/lib/client.js` 与哈希 `13a5fe0e…`，而 0.2.0-rc.2 已把 ' +
-        'dsh-client-runtime 拆掉（改成 dsh-client-modules + dsh-client-store）；' +
-        '(c) 断言 `@deepseek-ai/dsh-settings 0.1.1-rc.2`、`dsh-reasoning-effort: 0.6.2`、' +
-        '`MutableChatNodeStore` 等已作废的取值 —— 本仓已迁到 0.8.1 / rc.2。',
-      fix:
-        '把"取现役 home"改成显式参数（env 或 argv，默认指向本仓 profiles/web），' +
-        '再把断言里的版本/哈希/包名换成 rc.2 现状。注意这是一次**语义级重写**（等于给 ' +
-        'upgrade-preflight.js 做 rc.2 复评），不要只为让它变绿而放宽断言。',
-    },
-  ],
-
-  // ---------- browser-dock ----------
-  // contract.test.js / state-watch.test.js 已于 T-113（2026-10-14）修复并摘除：
-  // - contract 9/9 绿：断言改为 vendor 内联副本（canonical byte-for-byte）+ 反向守卫
-  //   "三源码不得再出现 dsh-fairy-contracts"；spawn 路径断言补上上游的 .cmd 三元分支。
-  // - state-watch 绿：原"vendor 内联不彻底"已修（src/index.js 改引 vendor 副本）；
-  //   Windows 无 POSIX 权限位 → 0600 断言加平台分支，Linux CI 仍真查。
-  //   （沙箱内 fs.watch 会 EPERM，监视器自动退 800ms 轮询，不阻塞用例；真机正常。）
-  [
-    'browser-dock/dsh-browser-dock/test/startup.test.js',
-    {
-      reason: '在本机环境挂死（60s 超时）',
-      detail:
-        '该用例会挂住不返回，疑似等待不会到达的进程/端口事件。' +
-        '它是上游自带、与本仓库兼容改动无关。CI 必须依赖超时兜住它。',
-      fix: '定位挂点（建议先加 --test-reporter 与超时打点），或明确它需要外部环境。',
-    },
-  ],
+  /*
+   * 2026-10-19：**名单已清空**。
+   *
+   * 原先的 5 条历史遗留全部按本文件自己的原则处理完毕 —— 把断言改成针对**当前
+   * 有意行为**，而不是放宽或删除：
+   *   · fairy-voice/client-contract、fairy-voice/index      → 33 / 22 全绿
+   *   · fairy-visual/settings-contract                      → 3 全绿（并修掉失效的包名 import）
+   *   · fairy-system/upgrade                                → 10 全绿（按 0.2.1-rc.2 语义级重写）
+   *   · browser-dock/startup                                → 1 全绿（根因是 t.after 死等已退出的子进程）
+   *
+   * 保留这个空 Map 和下面的接口，是为了让 run-tests.mjs 的判定逻辑不变，
+   * 也让「以后又出现历史遗留」时有地方写清楚原因与修法 —— 但**新测试不允许进来**。
+   */
 ]);
 
 /**

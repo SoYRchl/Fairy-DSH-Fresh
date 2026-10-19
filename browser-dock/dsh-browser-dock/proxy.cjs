@@ -307,7 +307,17 @@ function pollCommands() {
 removeRuntimeFiles();
 publish(inactiveState());
 
-const child = spawn(playwrightCommand, process.argv.slice(2), { stdio: ['pipe', 'pipe', 'pipe'], shell: isWindows });
+// ★ 2026-10-19：shell:true 时 Node 不会给命令加引号 —— 安装路径含空格
+//   （如 C:\Program Files\...）会把命令拆断。显式加引号。
+const child = spawn(isWindows ? `"${playwrightCommand}"` : playwrightCommand, process.argv.slice(2), { stdio: ['pipe', 'pipe', 'pipe'], shell: isWindows });
+// ★ 没有这个监听，playwright-mcp 缺失/不可执行时 'error' 无人接管会
+//   直接把 proxy 打成未捕获异常，宿主只看到进程消失、没有任何诊断。
+child.on('error', (error) => {
+  diagnostics.error('proxy.playwright.spawn', error, { tool: 'playwright-mcp' });
+  publish({ ...inactiveState(), error: 'playwright-mcp 不可用' });
+  process.exitCode = 1;
+  try { child.kill(); } catch {}
+});
 child.stderr.pipe(process.stderr);
 
 const clientInput = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -359,22 +369,24 @@ const checkCommands = () => {
   try { pollCommands(); } catch (error) { diagnostics.error('proxy.control.poll', error, {}); }
 };
 
-let commandWatcher = null;
+/* ★ 2026-10-19：这里原来用 fs.watch 监听 runtimeDir。Windows 上只要路径里带中文
+ * 用户名（系统会把它解析成 8.3 短名，如 C:\Users\<中文名>SO~1\...），libuv 就会触发
+ * 内部断言 src/win/fs-event.c:72 —— 不是抛错，是直接把监听线程打死（进程还在，
+ * 事件永远不来）。fs.watchFile 走 stat 轮询，语义相同（原子 rename 后依然可见），
+ * 且完全不受短名影响。轮询间隔取 300ms：比 5s 的对账定时器快，够用且开销可忽略。 */
+const commandPollMs = 300;
+let commandWatcherAttached = false;
 try {
-  // Commands are atomically renamed into the stable runtime directory. Use
-  // directory events for normal low-latency delivery and keep only a slow
-  // reconciliation timer for platforms that can drop filesystem events.
-  commandWatcher = fs.watch(runtimeDir, (event, filename) => {
-    if ((event === 'change' || event === 'rename') && String(filename || '') === commandFileName) checkCommands();
-  });
-  commandWatcher.on('error', (error) => {
-    diagnostics.warn('proxy.control.watch', { fallback_rescan_ms: commandRescanMs }, error);
-    commandWatcher?.close();
-    commandWatcher = null;
-  });
+  fs.watchFile(commandFile, { interval: commandPollMs }, () => checkCommands());
+  commandWatcherAttached = true;
 } catch (error) {
   diagnostics.warn('proxy.control.watch', { fallback_rescan_ms: commandRescanMs }, error);
 }
+const detachCommandWatcher = () => {
+  if (!commandWatcherAttached) return;
+  commandWatcherAttached = false;
+  try { fs.unwatchFile(commandFile); } catch {}
+};
 const commandTimer = setInterval(checkCommands, commandRescanMs);
 commandTimer.unref?.();
 
@@ -382,8 +394,7 @@ function shutdown(signal) {
   if (closed) return;
   closed = true;
   clearInterval(commandTimer);
-  commandWatcher?.close();
-  commandWatcher = null;
+  detachCommandWatcher();
   for (const call of internalCalls.values()) {
     clearTimeout(call.timeout);
     call.reject(Object.assign(new Error(`Browser Dock shutting down (${signal})`), { code: 'proxy-shutdown' }));
@@ -402,8 +413,7 @@ process.on('exit', removeRuntimeFiles);
 child.on('exit', (code, signal) => {
   closed = true;
   clearInterval(commandTimer);
-  commandWatcher?.close();
-  commandWatcher = null;
+  detachCommandWatcher();
   for (const call of internalCalls.values()) {
     clearTimeout(call.timeout);
     call.reject(Object.assign(new Error('Playwright process exited'), { code: 'proxy-child-exited' }));

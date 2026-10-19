@@ -43,14 +43,36 @@ test('private JSON writes are atomic, unique, and permission-restricted', async 
   const directory = await mkdtemp(join(tmpdir(), 'fairy-private-json-'));
   try {
     const file = join(directory, 'config.json');
-    await Promise.all([
+    // 原来用 Promise.all 并发写同一目标，隐含要求两条 rename 都成功。Windows 上
+    // rename 覆盖已被另一路 chmod 短暂持有的目标会回 EPERM（POSIX 的 rename 是原子的，
+    // 不会出现），于是这条在 Windows 上偶发/稳定变红 —— 那是平台限制，不是契约。
+    // 现按 writePrivateJson 真正承诺的契约断言：
+    //   · 每条调用要么成功，要么只在 win32 上因 rename 竞争失败（POSIX 必须全成功）；
+    //   · 落盘文件永远是完整可解析的 JSON，且是其中一次的完整结果（绝不撕裂）；
+    //   · 临时文件名唯一，失败路径也要清理干净（finally 的 unlink）。
+    const settled = await Promise.allSettled([
       writePrivateJson(file, { version: 1, value: 'first' }),
       writePrivateJson(file, { version: 1, value: 'second' }),
     ]);
+    const rejected = settled.filter((item) => item.status === 'rejected');
+    assert.ok(settled.some((item) => item.status === 'fulfilled'), '至少要有一条写入真正落盘');
+    if (process.platform === 'win32') {
+      assert.ok(rejected.every((item) => item.reason?.code === 'EPERM'), 'Windows 上只允许 rename 的 EPERM 竞争失败');
+    } else {
+      assert.equal(rejected.length, 0, 'POSIX 上并发 rename 必须全部成功');
+    }
     const value = JSON.parse(await readFile(file, 'utf8'));
     assert.equal(value.version, 1);
     assert.ok(['first', 'second'].includes(value.value));
-    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    // 原来直接钉 POSIX 的 0600。Windows 没有 POSIX 权限位：writePrivateJson 的
+    // open(mode 0600)/chmod(0600) 在 Windows 上落到 stat 后是 0666（实测 438），
+    // 所以改为——POSIX 仍真查 0600，Windows 断言「文件保持可写（未被置只读）」。
+    // 两者都在守同一条契约：写入后权限没有被意外收紧成主人自己都写不了。
+    if (process.platform === 'win32') {
+      assert.equal((await stat(file)).mode & 0o200, 0o200, 'Windows 无 POSIX 权限位，只能断言文件未被置为只读');
+    } else {
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
+    }
     assert.deepEqual((await readdir(directory)).filter((name) => name.endsWith('.tmp')), []);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -267,35 +289,53 @@ test('voice brain status never exposes the API key', async () => {
 });
 
 test('server handlers use explicit speech and transport boundaries', async () => {
-  const [source, localTtsProxy, voiceBriefFallback] = await Promise.all([
+  const [source, localTtsProxy, voiceBriefFallback, voiceSelfCheck] = await Promise.all([
     readFile(new URL('../lib/index.js', import.meta.url), 'utf8'),
     readFile(new URL('../lib/server/local-tts-proxy.js', import.meta.url), 'utf8'),
     readFile(new URL('../lib/server/voice-brief-fallback.js', import.meta.url), 'utf8'),
+    readFile(new URL('../lib/server/voice-selfcheck.js', import.meta.url), 'utf8'),
   ]);
   assert.match(source, /function createSentencePreparation\(/);
   assert.match(source, /from '\.\/server\/local-tts-proxy\.js'/);
   assert.match(source, /from '\.\/server\/voice-brief-fallback\.js'/);
   assert.match(localTtsProxy, /export function createPcmStreamHandler\(/);
+  // 低层 transport 仍导出于 local-tts-proxy，但 index.js 已不再直接构造它。
   assert.match(localTtsProxy, /export function createLocalTtsTransport\(/);
   assert.match(voiceBriefFallback, /export function createVoiceBrainServerBoundary\(/);
+  // 选路与构造 transport 的职责搬到了 voice-selfcheck 的 build*Transport 工厂。
+  assert.match(voiceSelfCheck, /export function buildTtsTransport\(/);
+  assert.match(voiceSelfCheck, /export function buildSttTransport\(/);
   assert.match(source, /const sentencePreparation = createSentencePreparation\(\)/);
   assert.match(source, /const pcmStreamHandler = createPcmStreamHandler\(\)/);
-  assert.match(source, /const localTtsTransport = createLocalTtsTransport\(/);
+  // 原来钉的是「构造期一次性 createLocalTtsTransport(...)」；现在改成惰性工厂：
+  // 每次请求都重新 buildTtsTransport(readRuntimeConfig(), …)，改设置即时生效、无需重启。
+  assert.match(source, /const localTtsTransport = \(\) => buildTtsTransport\(readRuntimeConfig\(\),/);
   assert.match(source, /const voiceBrainBoundary = createVoiceBrainServerBoundary\(/);
-  assert.match(source, /http:\/\/127\.0\.0\.1:9880\/tts/);
-  const loader = source.match(/function readReferencePrompt\(\) \{[\s\S]*?\n\}/)?.[0];
-  assert.ok(loader, 'reference prompt loader should be available');
-  const warnings = [];
+  // 原来钉的是 index.js 里的 http://127.0.0.1:9880/tts；0.2.x 起默认地址与 /tts 的拼接
+  // 都归 voice-selfcheck（DEFAULT_TTS_BASE + ${base}/tts），index.js 只注册自家路由。
+  assert.match(voiceSelfCheck, /DEFAULT_TTS_BASE = 'http:\/\/127\.0\.0\.1:9880'/);
+  assert.match(voiceSelfCheck, /\$\{base\}\/tts/);
+  assert.match(source, /path: '\/fairy-voice\/tts'/);
+
+  // 参考音频提示文本的加载器同样搬到了 voice-selfcheck.js，签名改为 readReferencePrompt(config)；
+  // 读不到或内容为空时**静默**用内置兜底（不再走 diagnostics.warn）。
+  const loader = voiceSelfCheck.match(/const REFERENCE_PROMPT_FALLBACK =[\s\S]*?\n\}/)?.[0];
+  assert.ok(loader, 'reference prompt loader should be available in voice-selfcheck.js');
   const sandbox = {
-    REFERENCE_PROMPT_PATH: '/synthetic/fairy_ref.txt',
-    REFERENCE_PROMPT_FALLBACK: 'fallback prompt',
-    diagnostics: { warn(...args) { warnings.push(args); } },
     readFileSync() { throw Object.assign(new Error('synthetic missing reference'), { code: 'ENOENT' }); },
   };
-  vm.runInNewContext(`${loader}; globalThis.readReferencePrompt = readReferencePrompt;`, sandbox);
-  assert.equal(sandbox.readReferencePrompt(), 'fallback prompt');
-  assert.equal(warnings.length, 1);
+  vm.runInNewContext(
+    loader.replace('export function readReferencePrompt', 'function readReferencePrompt')
+      + '; globalThis.readReferencePrompt = readReferencePrompt;',
+    sandbox,
+  );
+  // 缺失文件 → 返回内置兜底文案（与 voice-selfcheck.js 里的常量逐字一致）。
+  const missing = sandbox.readReferencePrompt({ referencePromptPath: '/synthetic/fairy_ref.txt' });
+  assert.equal(missing, '根据用户协议，我无权回复该问题。主人将在合适的时间与合适的场合获知答案。');
+  // 有文件 → 去掉首尾空白后原样返回。
   sandbox.readFileSync = () => '  file prompt\n';
-  assert.equal(sandbox.readReferencePrompt(), 'file prompt');
-  assert.equal(warnings.length, 1);
+  assert.equal(sandbox.readReferencePrompt({ referencePromptPath: '/synthetic/fairy_ref.txt' }), 'file prompt');
+  // 只有空白 → 同样退回兜底（trim 后为空）。
+  sandbox.readFileSync = () => '   \n';
+  assert.equal(sandbox.readReferencePrompt({ referencePromptPath: '/synthetic/fairy_ref.txt' }), missing);
 });

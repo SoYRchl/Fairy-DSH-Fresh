@@ -1,10 +1,13 @@
 import z from '@deepseek-ai/schemastery';
+/* ★ 2026-10-19：这里原来 import 'dsh-fairy-contracts'（包名）。该包在兼容改动里
+ * 被**内联进 vendor/** 后就不再存在，产物 lib/index.js 早已改指 vendor，但 src 没跟上 ——
+ * 也就是说「从 src 重建」会直接 ERR_MODULE_NOT_FOUND。现与产物对齐。 */
 import {
   FAIRY_IDENTITY_SETTINGS_NAMESPACE,
   FAIRY_VISUAL_SETTINGS_NAMESPACE,
   FAIRY_VISUAL_SETTINGS_VERSION,
-} from 'dsh-fairy-contracts';
-import { createFairyDiagnostics } from 'dsh-fairy-contracts/diagnostics';
+} from '../vendor/fairy-contracts.js';
+import { createFairyDiagnostics } from '../vendor/diagnostics.js';
 
 // [local patch 2026-10-10] dsh 0.2.0-rc.2 不再导出 `settingsNamespace`。
 // 旧内核里它只是"品牌化 + 格式校验"的辅助函数；而 settings.register 这条注册路径

@@ -6,8 +6,8 @@
 
 | | |
 | --- | --- |
-| **当前版本** | `0.1.0-alpha.6`（独立版本线，已不再沿用上游 `v0.3.x`） |
-| **最新发布** | [v0.1.0-alpha.6](https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest) · 便携 zip + 安装包 + SHA256 |
+| **当前版本** | `0.1.0-alpha.7`（独立版本线，已不再沿用上游 `v0.3.x`） |
+| **最新发布** | [v0.1.0-alpha.7](https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest) · 便携 zip + 安装包 + 插件 tgz + SHA256 |
 | **实测内核** | `dsh 0.2.1-rc.2`（最新；`0.2.0-rc.2` 同样可用，见 §五） |
 | **许可** | Apache-2.0（继承自上游） |
 
@@ -264,6 +264,7 @@ node tools\run-tests.mjs --tools-only   # 只跑本仓库自己的工具测试�
 | [docs/本地改动.md](docs/本地改动.md) | 孤舟版相对上游改了什么、为什么 |
 | [docs/改动清单.md](docs/改动清单.md) | 相对上游的文件分类（Apache-2.0 §4(b) 举证材料） |
 | [docs/内核升级-0.2.1.md](docs/内核升级-0.2.1.md) | 0.2.0-rc.2 → 0.2.1-rc.2 升级全记录（差异、验证、未采纳项） |
+| [docs/加固记录-20261019.md](docs/加固记录-20261019.md) | 2026-10-19 全面排查出的缺陷、证据与修法 |
 | [docs/测试与CI.md](docs/测试与CI.md) | 测试入口与 CI 设计 |
 | [docs/compat/换代风险登记.md](docs/compat/换代风险登记.md) | DSH 换代会踩的坑与动作清单 |
 | [docs/compat/运行时契约.md](docs/compat/运行时契约.md) | 跨内核运行时契约的适用性判定 |

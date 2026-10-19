@@ -26,9 +26,10 @@ async function waitFor(check, message, timeoutMs = 4000) {
 
 test('publishes the dock only after the first presentable frame is complete', async (t) => {
   const dshHome = await mkdtemp(join(tmpdir(), 'dsh-browser-dock-startup-'));
-  const playwright = join(dshHome, 'profiles', 'web', 'node_modules', '.bin', 'playwright-mcp');
+  const binDir = join(dshHome, 'profiles', 'web', 'node_modules', '.bin');
+  const playwright = join(binDir, 'playwright-mcp');
   const stateFile = join(dshHome, 'browser-dock', 'state.json');
-  await mkdir(dirname(playwright), { recursive: true });
+  await mkdir(binDir, { recursive: true });
   await writeFile(playwright, `#!/usr/bin/env node
 const readline = require('node:readline');
 let navigated = false;
@@ -59,14 +60,32 @@ readline.createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line
 });
 `, { mode: 0o700 });
   await chmod(playwright, 0o700);
+  /* ★ 2026-10-19：Windows 上 proxy.cjs 调的是 .bin\playwright-mcp.cmd。原来只造了
+   * POSIX 那个无扩展名脚本 ⇒ cmd.exe 找不到文件、子进程秒退，测试便卡在「等一个
+   * 永远不会到来的状态」上挂死。这里按平台把壳补齐。 */
+  const playwrightScript = join(binDir, 'playwright-mcp.js');
+  await writeFile(playwrightScript, await readFile(playwright, 'utf8'));
+  if (process.platform === 'win32') {
+    await writeFile(join(binDir, 'playwright-mcp.cmd'), `@echo off\r\n"${process.execPath}" "%~dp0playwright-mcp.js" %*\r\n`);
+  }
 
   const child = spawn(process.execPath, [proxyPath], {
     env: { ...process.env, DSH_HOME: dshHome },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   t.after(async () => {
-    if (child.exitCode == null) child.kill('SIGTERM');
-    await new Promise((resolve) => child.once('exit', resolve));
+    /* ★ 2026-10-19：原写法只要 child.exitCode == null 就 kill，然后无条件
+     * await once('exit')。若子进程**此前已经退出**，'exit' 不会再触发，
+     * 这个 await 就永久挂住 —— 整个测试文件超时。现在只在确实活着时才等，
+     * 并且给等待加上限，超时就补一刀 SIGKILL。 */
+    if (child.exitCode == null && child.signalCode == null) {
+      child.kill('SIGTERM');
+      await Promise.race([
+        new Promise((resolve) => child.once('exit', resolve)),
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
+      if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL');
+    }
     await rm(dshHome, { recursive: true, force: true });
   });
 
