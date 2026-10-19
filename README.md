@@ -151,8 +151,8 @@ dsh plugin --profile web add `
 
 本仓库用 **feature-detection（能力探测）** 而不是判版本号来跨两代内核：
 
-- 两代 API 并存时取其一（如 `IconPlayOutline16 ?? IconPlayOutlineRegular`），新旧内核零分叉；
-- 被改名的服务不硬声明，探测失败即降级兜底，**保证启动**；
+- 选择器取并集而不是分支：会话容器同时匹配 `[data-slot="conversation"]` 与 `[data-slot="main.conversation"]`，输入框同时匹配 `textarea` 与 `[contenteditable][data-composer-input]`；
+- 被改名/移除的服务不硬声明（硬声明会让 fiber 永久挂起），改用 `ctx.get("settingsScope")` 探测，拿不到就回落到同契约的 localStorage 实现，**保证启动**；
 - 三个核心包（visual / voice / balance-meter）把 `@deepseek-ai/dsh-settings` 声明成**可选** peer 依赖，范围 `^0.1.0-rc.7 || ^0.1.1-rc.2 || ^0.1.2-alpha.2 || ^0.2.0-rc.1`：宿主没装这个包也照常加载，装了则按上面那条规则探测。
 
 **口径要说清楚**：
