@@ -86,12 +86,12 @@
 
 ### 语音输入 STT（`dsh-fairy-voice`）
 
-六路 provider，麦克风按钮挂在输入框左侧。**默认走浏览器端**（零配置、不需要任何外部服务）：
+六路 provider，麦克风按钮挂在输入框左侧。**默认 `whisper-web`**——模型跑在你自己的浏览器里，零配置、不需要任何外部服务：
 
 | id | 语义 | 跑在哪 |
 | --- | --- | --- |
 | `browser` | 系统 Web Speech API | 浏览器端 |
-| `whisper-web` | 浏览器内本地 Whisper（transformers.js + WASM） | 浏览器端，首次从 CDN 拉模型 |
+| `whisper-web` | 浏览器内本地 Whisper（transformers.js + WASM） | 浏览器端，**默认**；首次从 CDN 拉模型权重 |
 | `openai` | OpenAI 兼容 `/audio/transcriptions` | 服务端转发 |
 | `deepgram` | Deepgram `/v1/listen` | 服务端转发 |
 | `azure` | Azure 快速听写 | 服务端转发 |
