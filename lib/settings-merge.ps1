@@ -1,4 +1,4 @@
-﻿# Fairy-DSH 设置栏合并 + 朗读服务检测
+﻿﻿# Fairy-DSH 设置栏合并 + 朗读服务检测
 #
 # 目标（0.2.0 起）：
 #   * 设置里只保留**一个** Fairy 入口（fairy-visual 的 settings.section）
@@ -796,7 +796,7 @@ function New-MergedVisualText {
   # 远端 tag 形如 v0.3.8-compat.1，而 isNewer() 只逐段比数字 ——
   # 若本地填裸 '0.3.8'，两边的数字段都是 [0,3,8]，永远判定为「已是最新」。
   # 后缀串必须与发布用的 git tag 保持一致（见 docs\仓库与上游.md §5）。
-  $localVersionSuffix = '-compat.1'
+  $localVersionSuffix = ''
   $noticeText = '当前版本 v' + $versionText + ' · 内部整合分支（血缘与署名见仓库根 NOTICE / CONTRIBUTORS.md）'
   $panel = $panel.Replace('__FAIRY_NOTICE__', $noticeText)
   # [local patch 0.3.5] 检查更新要用它跟远端 tag 比大小，所以单独烤一份版本号

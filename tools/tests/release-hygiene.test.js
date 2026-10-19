@@ -195,6 +195,17 @@ test('VERSION 文件存在且是合法语义化版本号（可带 -alpha 等预�
   assert.match(v, /^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$/, `VERSION="${v}" 应为语义化版本号（如 0.1.0-alpha）`);
 });
 
+/* [2026-10-19] 设置页那一行是**构建时烤进产物的字符串**，同步器只跑一次就会再次漂移。
+ * 真实事故：包已经是 0.1.0-alpha.5，设置页还显示 0.1.0-alpha.3 —— 使用者看到错的版本，
+ * 报障时我们对不上号。把「显示版本 == VERSION」变成机器检查，改漏一处就红。 */
+test('设置页显示的版本必须与 VERSION 文件一致', () => {
+  const v = read(join(ROOT, 'VERSION')).trim();
+  const client = read(join(ROOT, 'fairy-visual/dsh-fairy-visual/lib/client.js'));
+  const m = client.match(/当前版本 v([^ ·\u00b7]+)/);
+  assert.ok(m, 'client.js 里应能找到「当前版本 v…」声明行（同步器 tools/sync-version.mjs 依赖它）');
+  assert.equal(m[1], v, `设置页显示 v${m[1]}，而 VERSION 是 ${v} —— 跑 node tools/sync-version.mjs --write`);
+});
+
 /* ------------------------------------------------------------------ *
  * 6. 更新检查引用的 API 地址必须含本仓库名
  * ------------------------------------------------------------------ */

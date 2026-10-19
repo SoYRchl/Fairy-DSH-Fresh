@@ -13,7 +13,7 @@
 # 全部（本仓库 + 各包上游测试）
 node tools\run-tests.mjs
 
-# 只跑本仓库自己的（快，约 1 秒，23 项）
+# 只跑本仓库自己的（快，约 1 秒，36 项）
 node tools\run-tests.mjs --tools-only
 
 # 自定义单文件超时（默认 60s）
@@ -36,9 +36,23 @@ foreach ($d in @('fairy-visual\dsh-fairy-visual','fairy-voice\dsh-fairy-voice',
 
 | 组 | 位置 | 数量 | 作用 |
 | --- | --- | --- | --- |
-| **本仓库 · 兼容层回归** | `tools/tests/compat-patches.test.js` | 11 | 钉住 18 个兼容提交的关键点，防止升级或"重新生成"把兼容代码**悄悄删掉** |
-| **本仓库 · 发布卫生** | `tools/tests/release-hygiene.test.js` | 12 | 编码契约、URL 指向、版本一致性、lock 文件、永久下载地址 |
-| **上游 · 各包自带** | `<包>/test/*.test.js` | 34 文件 | 上游原有的契约与行为测试 |
+| **本仓库 · 兼容层回归** | `tools/tests/compat-patches.test.js` | 11 | 钉住兼容提交的关键点，防止升级或"重新生成"把兼容代码**悄悄删掉** |
+| **本仓库 · 发布卫生** | `tools/tests/release-hygiene.test.js` | 10 | 编码契约、URL 指向、版本一致性、lock 文件 |
+| **本仓库 · 壳与自举** | `tools/tests/shell-hygiene.test.js` | 10 | 壳源码纯 ASCII、禁本机路径、关窗即停标记 |
+| **本仓库 · 一键复现** | `tools/tests/bootstrap.test.js` | 5 | `bootstrap.mjs` 的装包点、junction、mtime 契约 |
+| **上游 · 各包自带** | `<包>/test/*.test.js` | 45 文件 | 上游原有的契约与行为测试（含 `fairy-system` / `fairy-compat`） |
+
+**当前实测口径**（2026-10-19）：
+
+| 跑法 | 结果 |
+| --- | --- |
+| `--tools-only` | **36 pass / 0 fail / 0 stale** |
+| 本地全量 | **258 pass / 2 fail / 5 stale** |
+| CI（windows-latest，Node 22 + 24） | **250 pass / 7 fail / 5 stale** |
+
+本地 2 项红：`fairy-visual/test/contract.test.js`（断言了一处已被有意改掉的调用写法）、
+`browser-dock/test/state-watch.test.js`。CI 上另有 `fairy-system/test/preflight.test.js` 6 项
+（夹具依赖本机目录形态，本机通过）。它们都是**待修项**，不是被静默跳过的。
 
 ### 为什么兼容层测试是**存在性/形状**测试
 
@@ -50,10 +64,10 @@ DSH 环境（Node ≥20 + pnpm + Chrome/Edge），无法进 CI。这一点是已
 
 ---
 
-## 3. ⚠️ 7 个上游测试为什么失效
+## 3. ⚠️ 5 个上游测试为什么失效
 
-**全部** 34 个上游测试文件都来自原作者的首次公开提交
-（`4c1a161 Initial public Fairy DSH plugin suite`），而 **18 个兼容提交从未改动
+**全部** 上游测试文件都来自原作者的首次公开提交
+（`4c1a161 Initial public Fairy DSH plugin suite`），而**兼容提交从未改动
 过任何一个 `test` 文件**。所以它们断言的是**兼容改动之前的结构**，
 而兼容工作**故意改掉了**那些结构。
 
@@ -61,17 +75,19 @@ DSH 环境（Node ≥20 + pnpm + Chrome/Edge），无法进 CI。这一点是已
 > 只因**此前没有 CI**，一直没人发现。
 
 失效清单与修法在 [`tools/tests/known-stale.mjs`](../tools/tests/known-stale.mjs)，
-每条都写了**为什么失效**和**该怎么修**。摘要：
+每条都写了**为什么失效**和**该怎么修**。**当前剩 5 条**：
 
 | 测试 | 失效原因 | 修法方向 |
 | --- | --- | --- |
-| `fairy-voice/test/client-contract.test.js` | 断言上游原结构，与兼容改动冲突（槽位所有权 `cf9c055`、活动会话推导 `e64308e`、视觉门控 `39be114`、`settings.section` 合并 `0.2.0`、`readVoiceTimeline` 签名 `0.3.1`） | 改为断言**当前有意行为** |
-| `fairy-voice/test/index.test.js` | 同上（宿主侧） | 断言当前的守卫/降级行为 |
-| `fairy-visual/test/settings-contract.test.js` | 按字面核对 `client.js` 内部形态，而它是**生成物**且被 8 个兼容提交改过 | 改为断言**契约**（已由 `compat-patches.test.js` 示范） |
-| `fairy-visual/test/capability.test.js` | 上游 capability 集合已因 HDD 可选而变化 | 按当前集合更新 |
-| `browser-dock/test/contract.test.js` | 断言"打包时内联 `dsh-fairy-contracts`"的旧架构；该依赖已从 `package.json` 移除，`require.resolve` 必然失败 | 改为从 `vendor/diagnostics.js` 比对 |
-| `browser-dock/test/state-watch.test.js` | 其加载的入口模块仍 `import 'dsh-fairy-contracts/diagnostics'`，但依赖已移除 → `ERR_MODULE_NOT_FOUND`。**这暴露一个真 bug：`src/index.js` 的 vendor 内联不彻底** | 先修 `src/index.js` 引用，再让测试跑起来 |
+| `fairy-voice/test/client-contract.test.js` | 断言上游原结构，与兼容改动冲突（槽位所有权 `cf9c055`、活动会话推导 `e64308e`、视觉门控 `39be114`、`settings.section` 合并、`readVoiceTimeline` 签名） | 改为断言**当前有意行为** |
+| `fairy-voice/test/index.test.js` | 同上（宿主侧：`settings.register` 守卫、自启加固、配置透传） | 断言当前的守卫/降级行为 |
+| `fairy-visual/test/settings-contract.test.js` | 按字面核对 `client.js` 内部形态，而它是**生成物**且被多个兼容提交改过 | 改为断言**契约**（已由 `compat-patches.test.js` 示范） |
+| `fairy-system/test/upgrade.test.js` | 整套断言停在 `0.1.1-rc.2` 时代 + 依赖本机现役 home，CI 与整合仓都不成立 | 按当前内核重写断言，或标注所需外部环境 |
 | `browser-dock/test/startup.test.js` | 在本机环境**挂死**（60s 超时），疑似等待不会到达的事件 | 定位挂点或标注所需外部环境 |
+
+> 已从名单摘除（真修好了，不是跳过）：`fairy-visual/capability.test.js`（改为断言当前契约）、
+> `browser-dock/contract.test.js`（改为比对 `vendor/diagnostics.js`）、
+> `browser-dock/state-watch.test.js`（`src/index.js` 的 vendor 内联已补全，Windows 权限位断言加了平台分支）。
 
 ### 处理原则（重要）
 
@@ -93,7 +109,7 @@ DSH 环境（Node ≥20 + pnpm + Chrome/Edge），无法进 CI。这一点是已
 
 | Job | 内容 |
 | --- | --- |
-| `test` | windows-latest，Node **20 与 22** 双版本；先跑本仓库测试（最快给出兼容信号），再跑上游测试 |
+| `test` | windows-latest，Node **22 与 24** 双版本；先跑本仓库测试（最快给出兼容信号），再跑上游测试 |
 | `encoding` | 单独 job 复验编码契约：`.ps1` 必须有 BOM；`.cmd` 编码契约与 U+FFFD |
 
 **为什么用 windows-latest**：本仓库的核心缺陷类型（CP936 编码、BOM、
@@ -110,11 +126,12 @@ node tools\sync-version.mjs          # 报告（不一致时退出码 1）
 node tools\sync-version.mjs --bump   # 递增 compat 序号并同步 client.js 与生成器
 ```
 
-单一来源是仓库根的 [`VERSION`](../VERSION)（裸基线，如 `0.3.8`）
-+ 最新 git tag 的 `-compat.N` 后缀。同步器负责写入：
+单一来源是仓库根的 [`VERSION`](../VERSION)。⚠️ **注意现状**：版本线已改为独立的
+`0.1.0-alpha.N`，而 `sync-version.mjs` 仍只认裸三段版本号（`0.3.8` 那种），
+对 `0.1.0-alpha.5` 会**报错退出**（`VERSION 不是裸三段版本号`）。这是已知缺口，
+发版时靠手工同步，见 README「已知限制」。同步器原本负责写入：
 
-- `fairy-visual/…/lib/client.js` 的 `LOCAL_VERSION`（**必须带 `-compat.N`**，
-  否则版本比较会把新版本判成"已是最新"）
+- `fairy-visual/…/lib/client.js` 的 `LOCAL_VERSION`
 - `lib/settings-merge.ps1` 的 `$localVersionSuffix`（生成器里的同一份信息）
 
 各包 `package.json` 的 `version` 是**独立**的（插件市场靠它判断更新），不参与发布版本。

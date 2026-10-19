@@ -44,29 +44,34 @@ dsh --version
 ```
 
 > 🔴 **必须把 `dsh --version` 的结果报给用户，并对照兼容范围**：
-> 本套件适配 **`dsh 0.1.5-rc.1` ~ `0.2.0-rc.2`**（DSH Desktop `2.0.9` ~ `2.0.17`）。
-> - 落在这个范围内 → 正常安装，走第 1 步
-> - **明显更新**（如 `0.2.1+` / Desktop 2.0.18+）→ 内核可能又发生了破坏性变更。
->   🛑 **停下来告诉用户**：可以装，但**新内核的兼容性未经实测**，若启动异常请提 Issue 并附 `dsh --version`；
->   **不要**自行猜测或改写插件代码去"适配"
-> - **明显更旧**（如 `0.1.4` 及以下）→ 上游设计基线，通常可用，但本仓库的双代兼容路径只覆盖上述范围
+> 本套件**已实测** **`dsh 0.2.1-rc.2`**（最新）与 **`0.2.0-rc.2`**；peer 声明覆盖 `0.1.5-rc.1` ~ `0.2.x`。
+> - 落在 **`0.2.0-rc.2` / `0.2.1-rc.2`** → 正常安装，走第 1 步
+> - 其他 `0.2.x`（如 `0.2.1-alpha.*`、`0.2.1-rc.1`）→ 大概率可用，但**未逐版实测**；启动异常请提 Issue 并附 `dsh --version`
+> - **明显更新**（如 `0.2.2+` / `0.3.*`）→ 内核可能又发生了破坏性变更。
+>   🛑 **停下来告诉用户**：可以装，但**新内核的兼容性未经实测**；**不要**自行猜测或改写插件代码去"适配"
+> - **更旧**（`0.1.x` 及以下）→ 上游设计基线，双代兼容路径仍覆盖，但不再作为验收目标
 > - ⚠️ **绝对不要为了"对齐版本"去改 `@deepseek-ai/dsh-settings` 的 pin**（见 §5.0 铁律 1）
 
-### 第 1 步：安装（一条命令）
+### 第 1 步：安装（clone 后装本地目录）
 
 ```powershell
+git clone https://github.com/SoYRchl/Fairy-DSH-Fresh.git
+cd Fairy-DSH-Fresh
+node tools\bootstrap.mjs          # 装依赖 + 补 junction + 对齐产物 mtime，幂等
+
 dsh plugin --profile web add `
-  https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download/dsh-fairy-visual.tgz `
-  https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download/dsh-fairy-voice.tgz `
-  https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest/download/dsh-balance-meter.tgz
+  .\fairy-visual\dsh-fairy-visual `
+  .\fairy-voice\dsh-fairy-voice `
+  .\balance-meter\dsh-balance-meter
 ```
 
 **要点**：
 
 - `--profile web` 是默认 profile 名；**先问用户用的是哪个 profile**，不要假设
-- URL 一律用 `releases/latest/download/<包名>.tgz` —— 这是**永久地址**，带版本号会 404
+- 🔴 **不要用 `releases/latest/download/<包名>.tgz` 这种地址** —— 本仓库的 Release 里**只放壳的产物**（便携 zip / setup.exe / SHA256SUMS），**从来没有上传过插件 tgz**，那些地址实测 404。要 tgz 只能自己打：`.pack.ps1`（输出到 `release/`，文件名不带版本号）
+- `node tools\bootstrap.mjs` 必须先跑：它装两处依赖（`profiles/web` 与各插件包）、补 pnpm 不建的 `link:` junction、对齐产物 mtime。不跑会表现为 `failed to import`
 - 每个包自带 `dsh.bundle.patch` 声明，所以**不需要**你手写 `cordis.patch.yml`
-- 只装某一个就把其余 URL 删掉即可
+- 只装某一个就把其余路径删掉即可
 
 ### 第 2 步：验证（必做）
 
@@ -138,10 +143,10 @@ dsh plugin --profile web remove dsh-fairy-visual dsh-fairy-voice dsh-balance-met
 
 | 判别信号 | 判定 | 你该做什么 |
 | --- | --- | --- |
-| 下载 `.tgz` 卡住 / 超时 / `Failed to connect to github.com:443 after 21xxx ms` | 国内直连 GitHub 常超时 | 让用户挂代理；或改用 `install.cmd`（它有网络自查）。**别默认"绕开代理"** —— 若梯子在跑、代理也配着，"绕开代理"反而会因 schannel 取不到凭据而失败 |
+| `git clone` / `bootstrap.mjs` 卡住 / 超时 / `Failed to connect to github.com:443 after 21xxx ms` | 国内直连 GitHub 常超时 | 让用户挂代理。**别默认"绕开代理"** —— 若梯子在跑、代理也配着，"绕开代理"反而会因 schannel 取不到凭据而失败 |
 | `schannel: SEC_E_NO_CREDENTIALS` | 三查：`git config --get-regexp proxy` / 注册表 `ProxyServer` / 梯子端口在不在监听 | **先确认梯子在跑，再考虑权限**。详见 `docs\交接摘要.md` §9 坑 15 |
 | `dsh: pnpm failed` | pnpm 没装，或网络 | `where pnpm`；缺就 `npm install -g pnpm`，重试 |
-| 报 **404** | URL 带了版本号 | 只能用 `releases/latest/download/<包名>.tgz`（**不带版本号**，这是永久地址） |
+| 报 **404** | 用了 `releases/latest/download/<包名>.tgz` | 本仓库 Release **没有插件 tgz**（只有壳的 zip / setup.exe）。改走「clone + `node tools\bootstrap.mjs` + `dsh plugin add <本地目录>`」，或自己 `\pack.ps1` 打 tgz |
 | 双击安装器**一闪就没了** | 报错随窗口一起消失 | 让用户在**命令行**里跑同一个 `.cmd` 看输出 |
 | 🔴 满屏 `'xx' is not recognized as an internal or external command`，**但标题和部分 echo 又显示正常** | **安装器编码坏了**（不是用户操作错）：`.cmd` 存成了 UTF-8，在 `chcp=936` 的机器上 `rem` 注释行被从中间切开当命令执行 | 让用户敲 `chcp` 确认（**936 = 会中招**，65001 = 不会）。若是本仓库要重新发版 → 按 §6.1 用 GBK 写回 |
 | `node_modules` 里只有一个 Junction、没有 `@deepseek-ai` 相关目录 | 用了 `link:` 形态 —— **`link:` 不装依赖** | 换成 `file:` / `.tgz`，或先手动装依赖 |
@@ -282,7 +287,7 @@ Windows 反斜杠会解析失败。另外 `link:` **不会**装依赖，只有 `
 2. **不要改动表现层**：`.agent-presets/fairy/` 下的语料、`fairy-visual/src/client/**`（布局、mascot、样式）、
    `fairy-voice` 的朗读逻辑、`LICENSE` / `NOTICE` / `TRADEMARKS.md`
 3. **不要动 `upstream` remote**：它的推送地址已被设为 `DISABLED`，防止误推到上游作者仓库
-4. **不要把发布包里的 `.tgz` 改名带版本号**：README 用的是 `latest/download/<包名>.tgz` 永久地址，带版本号下次发版会 404
+4. **`pack.ps1` 产出的 `.tgz` 一律不带版本号**（`dsh-fairy-visual.tgz` 这种）：将来若真把 tgz 传上 Release，`latest/download/<包名>.tgz` 才能成为永久地址；带版本号下次发版就 404。**注意：当前 Release 里并没有 tgz，README/AGENTS 的安装路径已改为本地目录**
 5. **不要在 GitHub Release 附件里用中文文件名**：会被清洗成 `-.zip`
 
 ---

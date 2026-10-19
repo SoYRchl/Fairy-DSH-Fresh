@@ -6,9 +6,9 @@
 
 | | |
 | --- | --- |
-| **当前版本** | `0.1.0-alpha.5`（独立版本线，已不再沿用上游 `v0.3.x`） |
-| **最新发布** | [v0.1.0-alpha.5](https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest) · 便携 zip + 安装包 + SHA256 |
-| **实测内核** | `dsh 0.2.0-rc.2`（`0.2.1` 未系统验收，见 §五） |
+| **当前版本** | `0.1.0-alpha.6`（独立版本线，已不再沿用上游 `v0.3.x`） |
+| **最新发布** | [v0.1.0-alpha.6](https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/latest) · 便携 zip + 安装包 + SHA256 |
+| **实测内核** | `dsh 0.2.1-rc.2`（最新；`0.2.0-rc.2` 同样可用，见 §五） |
 | **许可** | Apache-2.0（继承自上游） |
 
 ---
@@ -159,9 +159,11 @@ dsh plugin --profile web add `
 
 | 项 | 事实 |
 | --- | --- |
-| 系统验收过的内核 | `dsh 0.2.0-rc.2`（壳内置的运行时与打包内核都是它） |
-| peer 声明范围 | `^0.2.0-rc.1`（即 `>=0.2.0-rc.1 <0.3.0`；声明为 optional，不匹配也不阻断加载） |
-| `0.2.1` | **未做系统验收**。桌面端已升到 `0.2.1-rc.2`，但没有在这个版本上跑完整五查；遇到问题请带上 `dsh --version` 开 Issue |
+| 随包内核 | `dsh 0.2.1-rc.2`（壳内置） |
+| 已实测可用 | `0.2.1-rc.2` 与 `0.2.0-rc.2`：五个插件 apply 全成功、页面渲染出 Fairy 视觉与设置面板、控制台零报错 |
+| peer 声明范围 | `^0.2.0-rc.1 || ^0.2.1-rc.1`（即 `>=0.2.0-rc.1 <0.3.0`；声明为 optional） |
+| 更老的 `0.1.x` | 上游设计基线；本仓库的双代兼容路径覆盖它，但不再作为验收目标 |
+| 更新 | DSH 升级后**先跑一次根目录的 `verify.cmd`**；遇到问题请带上 `dsh --version` 开 Issue |
 
 > ⚠️ **DSH 升级后先跑一次根目录的 `verify.cmd` 自检**：上游依赖官方 DOM 选择器与私有 slot 契约，升级后可能静默降级。本仓库的适配层只在已知变更点生效，**新出现的内核变更仍可能造成故障**。
 
@@ -203,6 +205,9 @@ node tools\run-tests.mjs --tools-only   # 只跑本仓库自己的工具测试�
 - **同源功能分支**：[`addsas222/Fairy-DSH-Exp`](https://github.com/addsas222/Fairy-DSH-Exp) —— TTS/STT provider 注册表的形状取自它，按接口重新实现，不引为依赖。
 - **本仓库（SoYRchl）**：内核换代适配、兼容层与契约测试、独立 Electron 壳、TTS/STT 多引擎、余额计价修正、悬浮球外观与置顶修复、发布链（便携 zip / NSIS / SHA256）。
 
+**同生态的另一套分发（无血缘，仅记录）**：[`FLKSSSSS/dsh-fairy-ui`](https://github.com/FLKSSSSS/dsh-fairy-ui)（v1.4.6）是**独立开发**的再整合包，形态是「改官方 DSH 桌面端 asar 主入口的插件包」，与本仓库的独立壳路线互斥 —— **同一台机器只装一套**。
+⚠️ 该仓库**没有任何 LICENSE 文件、`package.json` 也没有 `license` 字段**（默认保留所有权利），所以我们**只参考它公开的做法、不复制它的代码**。详见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。
+
 **为什么要有这个下游**：上游 `Chengzhibense/Fairy-DSH` 自 2026-08-29 起没有新提交，**零 release、零 tag**；孤舟版停在 2026-09-14。而 DSH 内核在此期间连做了两代破坏性变更（`0.1.5 → 0.2.0`），上游本体已跟不上，社区里几个下游分支各自补丁。本仓库把这些补丁、独立应用形态和功能增强收在一处。
 
 ⚠️ 本仓库是**非官方**分支，不代表原作者、上游或 DeepSeek 官方立场，未获任何背书。问题请开 **[本仓库 Issues](https://github.com/SoYRchl/Fairy-DSH-Fresh/issues)**，不要打扰上游作者。
@@ -217,7 +222,8 @@ node tools\run-tests.mjs --tools-only   # 只跑本仓库自己的工具测试�
 - **窗口层验收只能真机做**：受限沙箱里启动会因 GPU 子进程崩溃循环起不来（`exit_code=-1073741819`），这是环境问题不是代码问题——排查时先确认实例是谁启的。
 - **兼容层仍有未端到端验证项**：回退演练、设置暂存同步、中间版本未逐一实测、未做长时间压测；hero 投影 / composer 坞拖拽 / 实际出声 未进自动化。
 - **每次打开朗读面板会探测 TTS 服务**（3 秒硬上限），服务没起时会等满 3 秒才显示未配置。
-- 版本线处于 alpha。**设置面板里的版本号是构建时写死的**（当前产物里是 `v0.1.0-alpha.3`，而包是 `alpha.5`），以 `VERSION` 文件与 Release 为准。
+- **设置存在渲染进程的 localStorage 里**（0.2.x 内核已无 `settings.register`，插件按设计降级）。功能正常、重启仍在，但**不会写进 profile 配置**，换 profile / 重装后不跟随。改法见 [docs/内核升级-0.2.1.md](docs/内核升级-0.2.1.md) §6.1。
+- 版本线处于 alpha。设置面板的版本号由 `tools/sync-version.mjs` 从 `VERSION` 同步（有契约测试钉住），**以 `VERSION` 文件与 Release 为准**。
 
 ---
 
@@ -253,6 +259,7 @@ node tools\run-tests.mjs --tools-only   # 只跑本仓库自己的工具测试�
 | [docs/验证报告.md](docs/验证报告.md) | 隔离 profile 实测：宿主/客户端 apply、DOM 指标、未覆盖项 |
 | [docs/本地改动.md](docs/本地改动.md) | 孤舟版相对上游改了什么、为什么 |
 | [docs/改动清单.md](docs/改动清单.md) | 相对上游的文件分类（Apache-2.0 §4(b) 举证材料） |
+| [docs/内核升级-0.2.1.md](docs/内核升级-0.2.1.md) | 0.2.0-rc.2 → 0.2.1-rc.2 升级全记录（差异、验证、未采纳项） |
 | [docs/测试与CI.md](docs/测试与CI.md) | 测试入口与 CI 设计 |
 | [docs/compat/换代风险登记.md](docs/compat/换代风险登记.md) | DSH 换代会踩的坑与动作清单 |
 | [docs/compat/运行时契约.md](docs/compat/运行时契约.md) | 跨内核运行时契约的适用性判定 |
