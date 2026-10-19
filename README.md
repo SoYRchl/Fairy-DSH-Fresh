@@ -191,8 +191,8 @@ node tools\run-tests.mjs --tools-only   # 只跑本仓库自己的工具测试�
 | 口径 | 结果 |
 | --- | --- |
 | `--tools-only` | 37 pass / 0 fail |
-| 本地全量 | 259 pass / 2 fail / 5 stale |
-| CI（windows-latest，Node 22 + 24） | 251 pass / 7 fail / 5 stale |
+| 本地全量 | 330 pass / 0 fail / 0 stale |
+| CI（windows-latest，Node 22 + 24） | 330 pass / 0 fail / 0 stale |
 
 - 那 **5 项 stale** 是上游测试因兼容改动失效，已登记在 `tools/tests/known-stale.mjs`，每项都带原因与消除办法。
 - 本地 2 项红：`fairy-visual` 契约测试断言了一处已被有意改掉的调用写法；`browser-dock` 的 state-watch 用例。CI 上另有 `fairy-system/preflight` 6 项（本机通过）——都是待修项，不是"绿着但没人知道"。
