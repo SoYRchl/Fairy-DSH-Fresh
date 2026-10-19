@@ -52,7 +52,9 @@ dsh --version
 > - **更旧**（`0.1.x` 及以下）→ 上游设计基线，双代兼容路径仍覆盖，但不再作为验收目标
 > - ⚠️ **绝对不要为了"对齐版本"去改 `@deepseek-ai/dsh-settings` 的 pin**（见 §5.0 铁律 1）
 
-### 第 1 步：安装（clone 后装本地目录）
+### 第 1 步：安装（二选一）
+
+**路线 A（推荐）clone 后装本地目录** —— 不依赖任何 URL，最稳：
 
 ```powershell
 git clone https://github.com/SoYRchl/Fairy-DSH-Fresh.git
@@ -65,10 +67,26 @@ dsh plugin --profile web add `
   .\balance-meter\dsh-balance-meter
 ```
 
+**路线 B 直接从 Release 装 tgz** —— 不用 clone，但**地址必须带版本号**（见下面第一条要点）：
+
+```powershell
+$v = 'v0.1.0-alpha.6'   # 与 Releases 页最新那条一致；不要写 latest
+$base = "https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/download/$v"
+dsh plugin --profile web add `
+  "$base/dsh-fairy-visual.tgz" `
+  "$base/dsh-fairy-voice.tgz" `
+  "$base/dsh-balance-meter.tgz"
+```
+
 **要点**：
 
 - `--profile web` 是默认 profile 名；**先问用户用的是哪个 profile**，不要假设
-- 🔴 **不要用 `releases/latest/download/<包名>.tgz` 这种地址** —— 本仓库的 Release 里**只放壳的产物**（便携 zip / setup.exe / SHA256SUMS），**从来没有上传过插件 tgz**，那些地址实测 404。要 tgz 只能自己打：`.pack.ps1`（输出到 `release/`，文件名不带版本号）
+- 🔴 **资产直链不能用 `releases/latest/download/`** —— 本仓库**只发 prerelease**，而 GitHub 的 `/releases/latest` **只指向非预发布**，所以那个前缀下的任何文件都 404（页面能打开，资产不行）。**必须带版本号**：
+  ```
+  https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/download/v0.1.0-alpha.6/dsh-fairy-visual.tgz
+  ```
+  （版本号看仓库根的 `VERSION` 文件，或 Releases 页最新的那条）
+- 也可以完全跳过网络：`.pack.ps1` 本地打 tgz 到 `release/`（文件名不带版本号）
 - `node tools\bootstrap.mjs` 必须先跑：它装两处依赖（`profiles/web` 与各插件包）、补 pnpm 不建的 `link:` junction、对齐产物 mtime。不跑会表现为 `failed to import`
 - 每个包自带 `dsh.bundle.patch` 声明，所以**不需要**你手写 `cordis.patch.yml`
 - 只装某一个就把其余路径删掉即可

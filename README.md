@@ -19,7 +19,7 @@
 
 三件事同时成立：
 
-1. **独立桌面应用** —— 自带 Electron 壳、托盘、启动动画和内核运行时，解压即用，不依赖浏览器标签页。
+1. **独立桌面应用** —— 自带 Electron 壳、托盘、启动动画和内核运行时（**`dsh 0.2.1-rc.2`**），解压即用，不依赖浏览器标签页。
 2. **Fairy 插件套件** —— 视觉（HDD 主题 / 舞台 / 表情）、人设、朗读、语音输入、余额卡，拆成独立插件包，也可以只装进你自己的 DSH。
 3. **跨内核兼容层** —— 用能力探测而不是判版本号，在 `dsh 0.1.x → 0.2.x` 的破坏性变更之间保持可用；升级内核后有一套契约测试点名失败行。
 
@@ -134,7 +134,11 @@ dsh plugin --profile web add `
   .\balance-meter\dsh-balance-meter
 ```
 
-> ⚠️ **Release 里目前只有壳的产物，没有插件 `.tgz`**。所以 `releases/latest/download/dsh-fairy-visual.tgz` 这类地址现在是 404，别照抄。要 tgz 自己打：`.\pack.ps1`（产出到 `release/`，文件名不带版本号，正是为了能传成永久地址）。
+> ⚠️ **资产直链不能写 `releases/latest/download/`** —— 本仓库**只发 prerelease**，GitHub 的 `/releases/latest` 只指向非预发布，那个前缀下的文件会 404。**必须带版本号**：
+> ```
+> https://github.com/SoYRchl/Fairy-DSH-Fresh/releases/download/v0.1.0-alpha.6/dsh-fairy-visual.tgz
+> ```
+> 也可以完全跳过网络：`.\pack.ps1` 本地打 tgz 到 `release/`。
 
 要求：已装 DSH、Node.js ≥ 20、pnpm（装 DSH 时不自带，需 `npm i -g pnpm`）、能连 GitHub / npm。
 
